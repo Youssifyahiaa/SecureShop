@@ -30,6 +30,8 @@ def create_app(test_config=None):
     # 2) Initialise extensions (imported here to avoid circular imports).
     from .extensions import csrf, db, limiter, login_manager, migrate
 
+    from . import models  # noqa: F401  (registers tables for migrations)
+
     db.init_app(app)
     migrate.init_app(app, db)
     csrf.init_app(app)
