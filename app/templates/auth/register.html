@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Register - SecureShop{% endblock %}
+{% block content %}
+  <h1>Create an account</h1>
+  <form method="post" action="{{ url_for('auth.register') }}" novalidate>
+    {{ form.csrf_token }}
+    {% for field in [form.name, form.email, form.password, form.confirm_password] %}
+      <p>
+        {{ field.label }}<br>
+        {{ field() }}
+        {% for error in field.errors %}<br><span class="error">{{ error }}</span>{% endfor %}
+      </p>
+    {% endfor %}
+    <p><button type="submit">Register</button></p>
+  </form>
+{% endblock %}

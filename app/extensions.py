@@ -28,8 +28,9 @@ login_manager.session_protection = "strong"
 
 @login_manager.user_loader
 def load_user(user_id):
-    """Temporary loader until the User model exists (Task 2).
+    from app.models.user import User  # imported here to avoid a circular import
 
-    Task 2 replaces this with: return db.session.get(User, int(user_id))
-    """
-    return None
+    try:
+        return db.session.get(User, int(user_id))
+    except (TypeError, ValueError):
+        return None
