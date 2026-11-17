@@ -6,7 +6,20 @@
   <title>{% block title %}SecureShop{% endblock %}</title>
 </head>
 <body>
-  <header><a href="{{ url_for('main.home') }}">SecureShop</a></header>
+  <header>
+    <a href="{{ url_for('main.home') }}">SecureShop</a>
+    <nav>
+      {% if current_user.is_authenticated %}
+        <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit">Log out</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('auth.login') }}">Login</a>
+        <a href="{{ url_for('auth.register') }}">Register</a>
+      {% endif %}
+    </nav>
+  </header>
   <main>
     {% with messages = get_flashed_messages() %}
       {% for m in messages %}<p class="flash">{{ m }}</p>{% endfor %}

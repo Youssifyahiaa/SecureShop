@@ -3,6 +3,7 @@
 Run (development only):   flask --app app run --debug
 Tests:                    python -m pytest -q
 """
+import logging
 import os
 
 from flask import Flask
@@ -24,6 +25,8 @@ def create_app(test_config=None):
         app.config.update(test_config)
     if not app.config.get("SECRET_KEY"):
         raise RuntimeError("SECRET_KEY is not set. Copy .env.example to .env and set a random value.")
+
+    app.logger.setLevel(logging.INFO)  # so the "[DEV MAIL]" lines reach the server log
 
     os.makedirs(app.instance_path, exist_ok=True)
 
