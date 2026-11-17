@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Login - SecureShop{% endblock %}
+{% block content %}
+  <h1>Log in</h1>
+  <form method="post" action="{{ url_for('auth.login', next=request.args.get('next')) }}" novalidate>
+    {{ form.csrf_token }}
+    {% for field in [form.email, form.password] %}
+      <p>{{ field.label }}<br>{{ field() }}</p>
+    {% endfor %}
+    <p><button type="submit">Log in</button></p>
+  </form>
+{% endblock %}

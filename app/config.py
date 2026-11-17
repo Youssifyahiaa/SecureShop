@@ -44,6 +44,9 @@ class Config:
     # --- Request size (blocks oversized form/JSON bodies) -------------------
     MAX_CONTENT_LENGTH = 1 * 1024 * 1024  # 1 MB
 
+    # --- Account confirmation links ------------------------------------------
+    CONFIRM_TOKEN_MAX_AGE = int(os.environ.get("CONFIRM_TOKEN_MAX_AGE", str(24 * 3600)))  # seconds
+
     # --- Email (used for confirmation / reset links in Task 3) ---------------
     MAIL_SERVER = os.environ.get("MAIL_SERVER", "")
     MAIL_PORT = int(os.environ.get("MAIL_PORT", "587"))

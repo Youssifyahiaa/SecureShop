@@ -28,6 +28,11 @@ def not_common_password(form, field):
         raise ValidationError("This password is too common. Please choose a different one.")
 
 
+class LoginForm(FlaskForm):
+    email = StringField("Email", filters=[_normalize_email], validators=[DataRequired(), Length(max=255)])
+    password = PasswordField("Password", validators=[DataRequired(), Length(max=MAX_PASSWORD_LENGTH)])
+
+
 class RegistrationForm(FlaskForm):
     name = StringField("Name", filters=[_strip], validators=[DataRequired(), Length(max=100)])
     email = StringField(
