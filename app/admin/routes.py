@@ -1,6 +1,14 @@
-from flask import render_template, request
+from flask import (
+    abort,
+    flash,
+    redirect,
+    render_template,
+    request,
+    url_for
+)
 from sqlalchemy import func, or_, select
-
+from flask_login import current_user
+from app.admin.audit import log_event
 from app.extensions import db
 from app.models.user import User
 from app.models.audit_log import AuditLog
@@ -128,4 +136,72 @@ def audit_logs():
         page=page,
         total_pages=total_pages,
         total=total
+    )
+
+@bp.post("/users/<int:user_id>/role")
+@admin_required
+def change_user_role(user_id):
+
+    # Find the target user.
+    target = db.session.get(User, user_id)
+
+    if target is None:
+        abort(404)
+
+    # Accept only the two supported roles.
+    new_role = request.form.get("role", "").strip()
+
+    if new_role not in {"customer", "admin"}:
+        abort(400)
+
+    old_role = target.role
+
+    # Avoid unnecessary updates and audit records.
+    if new_role == old_role:
+        flash("The user already has this role.")
+        return redirect(
+            url_for(
+                "admin.users",
+                q=request.form.get("q", "").strip()[:100]
+            )
+        )
+
+    # Prevent an administrator from removing their own access.
+    if target.id == current_user.id and new_role != "admin":
+        flash("You cannot remove your own administrator access.")
+        return redirect(
+            url_for(
+                "admin.users",
+                q=request.form.get("q", "").strip()[:100]
+            )
+        )
+
+    # Change only the role field.
+    target.role = new_role
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    # Record the successful change AFTER the database commit.
+    # log_event uses its own independent transaction.
+    log_event(
+        event_type="role_changed",
+        user_id=target.id,
+        actor_id=current_user.id,
+        details={
+            "old_role": old_role,
+            "new_role": new_role
+        }
+    )
+
+    flash("User role updated successfully.")
+
+    return redirect(
+        url_for(
+            "admin.users",
+            q=request.form.get("q", "").strip()[:100]
+        )
     )
