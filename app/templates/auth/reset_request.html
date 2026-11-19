@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Reset password - SecureShop{% endblock %}
+{% block content %}
+  <h1>Reset your password</h1>
+  <p>Enter your account email. If an account exists, we will send a reset link valid for 30 minutes.</p>
+  <form method="post" action="{{ url_for('auth.reset_request') }}" novalidate>
+    {{ form.csrf_token }}
+    <p>
+      {{ form.email.label }}<br>
+      {{ form.email() }}
+      {% for error in form.email.errors %}<br><span class="error">{{ error }}</span>{% endfor %}
+    </p>
+    <p><button type="submit">Send reset link</button></p>
+  </form>
+  <p><a href="{{ url_for('auth.login') }}">Back to login</a></p>
+{% endblock %}

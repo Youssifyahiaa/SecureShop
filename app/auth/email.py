@@ -33,3 +33,12 @@ def send_confirmation_email(user, link):
         "Confirm your SecureShop account",
         f"Hello {user.name},\n\nConfirm your account: {link}\n\nIf you did not register, ignore this email.",
     )
+
+
+def send_password_reset_email(user, link):
+    return send_email(
+        user.email,
+        "Reset your SecureShop password",
+        f"Hello {user.name},\n\nReset your password (link valid for 30 minutes, single use): {link}\n\n"
+        "If you did not ask for this, ignore this email; your password will not change.",
+    )
