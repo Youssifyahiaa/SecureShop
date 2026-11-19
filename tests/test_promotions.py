@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models.promotion import Coupon, NewsletterSubscriber, CouponRedemption
 from app.models.user import User
+from app.models.order import Order
 
 
 @pytest.fixture
@@ -171,5 +172,75 @@ def test_redemption_rejects_nonexistent_order(app):
                         coupon_id=coupon_id,
                         user_id=user_id,
                         order_id=999999,
+                    )
+                )
+def test_redemption_rejects_nonexistent_user(app):
+    """A coupon redemption must reference an existing user."""
+
+    with app.app_context():
+
+        # Create a valid user, coupon, and order.
+        with db.engine.begin() as conn:
+            valid_user_id = conn.execute(
+                User.__table__.insert().values(
+                    name="Valid FK Test User",
+                    email="fk-user@example.com",
+                    password_hash="test-only-unused-hash",
+                )
+            ).inserted_primary_key[0]
+
+            coupon_id = conn.execute(
+                Coupon.__table__.insert().values(
+                    **coupon_data("FKUSER10")
+                )
+            ).inserted_primary_key[0]
+
+            order_id = conn.execute(
+                Order.__table__.insert().values(
+                    user_id=valid_user_id,
+                    idempotency_key="fk-user-test-order",
+                )
+            ).inserted_primary_key[0]
+
+        # The coupon and order exist, but this user does not.
+        with pytest.raises(IntegrityError):
+            with db.engine.begin() as conn:
+                conn.execute(
+                    CouponRedemption.__table__.insert().values(
+                        coupon_id=coupon_id,
+                        user_id=999999,
+                        order_id=order_id,
+                    )
+                )
+def test_redemption_rejects_nonexistent_coupon(app):
+    """A redemption must reference an existing coupon."""
+
+    with app.app_context():
+
+        # Create a valid user and order.
+        with db.engine.begin() as conn:
+            user_id = conn.execute(
+                User.__table__.insert().values(
+                    name="Coupon FK Test User",
+                    email="fk-coupon@example.com",
+                    password_hash="test-only-unused-hash",
+                )
+            ).inserted_primary_key[0]
+
+            order_id = conn.execute(
+                Order.__table__.insert().values(
+                    user_id=user_id,
+                    idempotency_key="fk-coupon-test-order",
+                )
+            ).inserted_primary_key[0]
+
+        # The user and order exist, but the coupon does not.
+        with pytest.raises(IntegrityError):
+            with db.engine.begin() as conn:
+                conn.execute(
+                    CouponRedemption.__table__.insert().values(
+                        coupon_id=999999,
+                        user_id=user_id,
+                        order_id=order_id,
                     )
                 )
