@@ -6,12 +6,16 @@ Every module imports the extension objects from here, e.g.
 They are created without an app and attached to it in create_app()
 (app factory pattern), which avoids circular imports.
 """
+import sqlite3
+
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_login import LoginManager
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -20,6 +24,24 @@ login_manager = LoginManager()
 # Rate limiter shared by the whole team. Apply limits per route, e.g.
 #   @limiter.limit("5 per minute")
 limiter = Limiter(key_func=get_remote_address)
+
+
+
+@event.listens_for(Engine, "connect")
+def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):
+    """Turn on foreign key enforcement for every new SQLite connection.
+
+    SQLite ships with foreign keys OFF and the setting is per connection, so it
+    must be set each time one is opened (app DB, in-memory test DB, migrations).
+    Other databases are left alone.
+    """
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
+
 
 login_manager.login_view = "auth.login"
 login_manager.login_message = "Please log in to continue."

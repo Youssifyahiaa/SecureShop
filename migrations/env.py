@@ -103,8 +103,32 @@ def run_migrations_online():
             **conf_args
         )
 
-        with context.begin_transaction():
-            context.run_migrations()
+        is_sqlite = connection.dialect.name == "sqlite"
+        if is_sqlite:
+            # Batch migrations rebuild tables (copy, drop, rename); with foreign
+            # keys ON that could cascade or fail. The PRAGMA is a no-op inside a
+            # transaction, so it is set (and committed) before the migration
+            # transaction starts.
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
+
+        try:
+            with context.begin_transaction():
+                context.run_migrations()
+
+            if is_sqlite:
+                violations = connection.exec_driver_sql(
+                    "PRAGMA foreign_key_check").fetchall()
+                connection.commit()
+                if violations:
+                    raise RuntimeError(
+                        "Foreign key violations after migration "
+                        "(table, rowid, parent, fkid): %r" % (violations,))
+        finally:
+            if is_sqlite:
+                connection.rollback()
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                connection.commit()
 
 
 if context.is_offline_mode():
