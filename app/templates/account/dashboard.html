@@ -1,0 +1,136 @@
+
+{% extends "base.html" %}
+
+{% block title %}My Account | SecureShop{% endblock %}
+
+{% block content %}
+
+<div class="account-page">
+
+    <div class="account-heading">
+        <div>
+            <p class="account-eyebrow">YOUR SECURESHOP ACCOUNT</p>
+            <h1>Welcome back, {{ current_user.name }}!</h1>
+            <p>Manage your account and track your shopping activity.</p>
+        </div>
+
+        <a href="{{ url_for('account.profile') }}"
+           class="account-button">
+            Edit Profile
+        </a>
+    </div>
+
+    <div class="account-stat-grid">
+
+        <div class="account-stat-card">
+            <span>Store Credit</span>
+            <strong>
+                {{ "%.2f"|format(current_user.credit_balance) }}
+            </strong>
+            <small>Your available balance</small>
+        </div>
+
+        <div class="account-stat-card">
+            <span>Total Orders</span>
+            <strong>{{ order_count }}</strong>
+            <small>Your registered purchases</small>
+        </div>
+
+        <div class="account-stat-card">
+            <span>Account Status</span>
+            <strong>
+                {{ "Verified" if current_user.is_confirmed else "Unverified" }}
+            </strong>
+            <small>Email verification status</small>
+        </div>
+
+    </div>
+
+    <section class="account-panel">
+
+        <div class="account-panel-heading">
+            <div>
+                <h2>Recent Orders</h2>
+                <p>Your five most recent orders.</p>
+            </div>
+        </div>
+
+        {% if recent_orders %}
+
+            <div class="account-table-wrap">
+
+                <table class="account-table">
+
+                    <thead>
+                        <tr>
+                            <th>Order</th>
+                            <th>Date</th>
+                            <th>Status</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for order in recent_orders %}
+
+                            <tr>
+                                <td>#{{ order.id }}</td>
+
+                                <td>
+                                    {{ order.created_at.strftime("%d %b %Y") }}
+                                </td>
+
+                                <td>
+                                    <span class="account-status">
+                                        {{ order.status|replace("_", " ")|title }}
+                                    </span>
+                                </td>
+
+                                <td>
+                                    {{ "%.2f"|format(order.total) }}
+                                </td>
+                            </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        {% else %}
+
+            <div class="account-empty">
+                <h3>No orders yet</h3>
+                <p>Your purchases will appear here once you place an order.</p>
+                <a href="{{ url_for('main.home') }}">Explore SecureShop</a>
+            </div>
+
+        {% endif %}
+
+    </section>
+
+    <section class="account-panel account-profile-summary">
+
+        <h2>Account Information</h2>
+
+        <p><strong>Name:</strong> {{ current_user.name }}</p>
+
+        <p><strong>Email:</strong> {{ current_user.email }}</p>
+
+        <p>
+            <strong>Member since:</strong>
+            {{ current_user.created_at.strftime("%d %b %Y") }}
+        </p>
+
+        <a href="{{ url_for('account.profile') }}">
+            Manage your profile →
+        </a>
+
+    </section>
+
+</div>
+
+{% endblock %}

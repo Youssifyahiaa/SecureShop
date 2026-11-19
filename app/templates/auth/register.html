@@ -1,16 +1,122 @@
+
 {% extends "base.html" %}
-{% block title %}Register - SecureShop{% endblock %}
+
+{% block title %}Create Account | SecureShop{% endblock %}
+
 {% block content %}
-  <h1>Create an account</h1>
-  <form method="post" action="{{ url_for('auth.register') }}" novalidate>
-    {{ form.csrf_token }}
-    {% for field in [form.name, form.email, form.password, form.confirm_password] %}
-      <p>
-        {{ field.label }}<br>
-        {{ field() }}
-        {% for error in field.errors %}<br><span class="error">{{ error }}</span>{% endfor %}
-      </p>
-    {% endfor %}
-    <p><button type="submit">Register</button></p>
-  </form>
+
+<section class="auth-layout">
+
+    <div class="auth-card">
+
+        <div class="auth-heading">
+
+            <div class="auth-icon">👤</div>
+
+            <h1>Create Account</h1>
+
+            <p>
+                Join SecureShop and start your shopping journey.
+            </p>
+
+        </div>
+
+        <form method="POST"
+              action="{{ url_for('auth.register') }}">
+
+            {{ form.csrf_token }}
+
+            <div class="form-field">
+
+                {{ form.name.label }}
+
+                {{ form.name(
+                    class_="form-control",
+                    placeholder="Enter your full name",
+                    autocomplete="name"
+                ) }}
+
+                {% for error in form.name.errors %}
+                    <span class="form-error">{{ error }}</span>
+                {% endfor %}
+
+            </div>
+
+
+            <div class="form-field">
+
+                {{ form.email.label }}
+
+                {{ form.email(
+                    class_="form-control",
+                    placeholder="you@example.com",
+                    autocomplete="email"
+                ) }}
+
+                {% for error in form.email.errors %}
+                    <span class="form-error">{{ error }}</span>
+                {% endfor %}
+
+            </div>
+
+
+            <div class="form-field">
+
+                {{ form.password.label }}
+
+                {{ form.password(
+                    class_="form-control",
+                    placeholder="Create a strong password",
+                    autocomplete="new-password"
+                ) }}
+
+                <p class="form-help">
+                    Use a password between 12 and 128 characters.
+                </p>
+
+                {% for error in form.password.errors %}
+                    <span class="form-error">{{ error }}</span>
+                {% endfor %}
+
+            </div>
+
+
+            <div class="form-field">
+
+                {{ form.confirm_password.label }}
+
+                {{ form.confirm_password(
+                    class_="form-control",
+                    placeholder="Confirm your password",
+                    autocomplete="new-password"
+                ) }}
+
+                {% for error in form.confirm_password.errors %}
+                    <span class="form-error">{{ error }}</span>
+                {% endfor %}
+
+            </div>
+
+
+            <button type="submit"
+                    class="button button-full">
+                Create My Account
+            </button>
+
+        </form>
+
+        <div class="auth-footer">
+
+            Already have an account?
+
+            <a href="{{ url_for('auth.login') }}">
+                Sign in
+            </a>
+
+        </div>
+
+    </div>
+
+</section>
+
 {% endblock %}
