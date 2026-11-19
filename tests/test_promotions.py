@@ -13,7 +13,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.models.promotion import Coupon, NewsletterSubscriber
+from app.models.promotion import Coupon, NewsletterSubscriber, CouponRedemption
+from app.models.user import User
 
 
 @pytest.fixture
@@ -117,3 +118,58 @@ def test_duplicate_subscriber_rejected(promotion_engine):
                     coupon_id=second_coupon,
                 )
             )
+
+def test_newsletter_rejects_nonexistent_coupon(app):
+    """A subscriber cannot reference a coupon that does not exist."""
+
+    with app.app_context():
+
+        # Confirm SQLite foreign-key enforcement is enabled.
+        with db.engine.connect() as conn:
+            fk_enabled = conn.exec_driver_sql(
+                "PRAGMA foreign_keys"
+            ).scalar()
+
+            assert fk_enabled == 1
+
+        # Try inserting a subscriber with an invalid coupon ID.
+        with pytest.raises(IntegrityError):
+            with db.engine.begin() as conn:
+                conn.execute(
+                    NewsletterSubscriber.__table__.insert().values(
+                        email="orphan@example.com",
+                        coupon_id=999999,
+                        subscribed_at=datetime.now(timezone.utc),
+                    )
+                )
+def test_redemption_rejects_nonexistent_order(app):
+    """A coupon redemption must reference an existing order."""
+
+    with app.app_context():
+
+        # Create a valid user and coupon for this test.
+        with db.engine.begin() as conn:
+            user_id = conn.execute(
+                User.__table__.insert().values(
+                    name="FK Test User",
+                    email="fk-order@example.com",
+                    password_hash="test-only-unused-hash",
+                )
+            ).inserted_primary_key[0]
+
+            coupon_id = conn.execute(
+                Coupon.__table__.insert().values(
+                    **coupon_data("FKORDER10")
+                )
+            ).inserted_primary_key[0]
+
+        # Attempt to redeem the coupon for a nonexistent order.
+        with pytest.raises(IntegrityError):
+            with db.engine.begin() as conn:
+                conn.execute(
+                    CouponRedemption.__table__.insert().values(
+                        coupon_id=coupon_id,
+                        user_id=user_id,
+                        order_id=999999,
+                    )
+                )
