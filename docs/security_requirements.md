@@ -470,3 +470,62 @@ They guide implementation, testing and integration.
 
 The requirements will be reviewed and updated as
 the application features become available.
+
+
+## Session Risk Scoring
+
+### Purpose
+SecureShop implements a session risk scoring mechanism to identify
+potentially suspicious authenticated sessions.
+
+The mechanism provides a numerical risk score between 0 and 100.
+It does not independently block users or invalidate sessions.
+
+### Implementation
+File: app/admin/session_risk.py
+
+Function:
+score_session_risk(user, request) -> int
+
+### Risk Indicators
+
+| Indicator | Risk Points |
+|---|---:|
+| Non-fresh session | 40 |
+| Non-permanent session | 15 |
+| Missing User-Agent | 10 |
+| Missing client IP address | 10 |
+| Invalid user/session binding | 100 |
+
+The final score is restricted to the range 0-100.
+
+### Security Rules
+
+1. Only authenticated users with a matching session binding
+   can receive a normal calculated score.
+2. Invalid or mismatched sessions receive a score of 100.
+3. The function must not modify authentication sessions.
+4. The function must not independently log out or block users.
+5. The function must not collect or store passwords, tokens,
+   cookies, or other authentication secrets.
+6. Existing Flask-Login session protection and session-version
+   validation must remain unchanged.
+
+### Testing
+
+Automated tests are located in:
+
+tests/test_session_risk.py
+
+The tests cover normal sessions, non-fresh sessions,
+non-permanent sessions, missing browser information,
+missing IP addresses, combined risk indicators,
+invalid session bindings, and missing request contexts.
+
+### Integration Status
+
+The initial implementation and automated tests are complete.
+
+Risk weights and enforcement thresholds require review
+and approval before integration into authentication
+or administrative security workflows.
