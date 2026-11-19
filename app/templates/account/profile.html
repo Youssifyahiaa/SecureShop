@@ -1,0 +1,84 @@
+
+{% extends "base.html" %}
+
+{% block title %}Edit Profile | SecureShop{% endblock %}
+
+{% block content %}
+
+<div class="account-page">
+
+    <div class="account-heading">
+        <div>
+            <p class="account-eyebrow">ACCOUNT SETTINGS</p>
+            <h1>Edit Your Profile</h1>
+            <p>Update your personal account information.</p>
+        </div>
+
+        <a href="{{ url_for('account.dashboard') }}"
+           class="account-back-link">
+            Back to Dashboard
+        </a>
+    </div>
+
+    <section class="account-panel account-form-panel">
+
+        <form method="POST"
+              action="{{ url_for('account.profile') }}"
+              class="account-form">
+
+            {{ form.csrf_token }}
+
+            <div class="account-field">
+
+                {{ form.name.label(class_="account-label") }}
+
+                {{ form.name(
+                    class_="account-input",
+                    maxlength="100",
+                    autocomplete="name"
+                ) }}
+
+                {% for error in form.name.errors %}
+                    <span class="account-field-error">
+                        {{ error }}
+                    </span>
+                {% endfor %}
+
+            </div>
+
+            <div class="account-field">
+
+                <label class="account-label">Email Address</label>
+
+                <input
+                    type="email"
+                    class="account-input"
+                    value="{{ current_user.email }}"
+                    disabled
+                >
+
+                <small>
+                    Email changes require a separate verification process.
+                </small>
+
+            </div>
+
+            <div class="account-form-actions">
+
+                <button type="submit" class="account-button">
+                    Save Changes
+                </button>
+
+                <a href="{{ url_for('account.dashboard') }}">
+                    Cancel
+                </a>
+
+            </div>
+
+        </form>
+
+    </section>
+
+</div>
+
+{% endblock %}
