@@ -9,8 +9,15 @@
   <header>
     <a href="{{ url_for('main.home') }}">SecureShop</a>
     <nav>
-      {% if current_user.is_authenticated %}
-        <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline">
+{% if current_user.is_authenticated %}
+
+    {% if current_user.is_admin %}
+        <a href="{{ url_for('admin.dashboard') }}">
+            Admin Panel
+        </a>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit">Log out</button>
         </form>

@@ -1,0 +1,126 @@
+
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard | SecureShop{% endblock %}
+
+{% block content %}
+
+<style>
+.admin-dashboard {
+    max-width: 1100px;
+    margin: 35px auto;
+    padding: 20px;
+}
+
+.admin-dashboard h1 {
+    margin-bottom: 8px;
+}
+
+.admin-subtitle {
+    color: #666;
+    margin-bottom: 30px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.stat-card {
+    padding: 24px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.stat-card h2 {
+    font-size: 32px;
+    margin: 10px 0;
+}
+
+.admin-section {
+    margin-top: 35px;
+}
+
+.admin-modules {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.module-card {
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+}
+
+.module-card p {
+    color: #666;
+}
+</style>
+
+<div class="admin-dashboard">
+
+    <h1>SecureShop Admin Dashboard</h1>
+
+    <p class="admin-subtitle">
+        Welcome, {{ current_user.name }}.
+        Manage and monitor your SecureShop application.
+    </p>
+
+    <h2>Website Statistics</h2>
+
+    <div class="stats-grid">
+
+        <div class="stat-card">
+            <h3>Total Users</h3>
+            <h2>{{ stats.total_users }}</h2>
+            <p>Registered accounts</p>
+        </div>
+
+        <div class="stat-card">
+            <h3>Confirmed Users</h3>
+            <h2>{{ stats.confirmed_users }}</h2>
+            <p>Verified accounts</p>
+        </div>
+
+        <div class="stat-card">
+            <h3>Administrators</h3>
+            <h2>{{ stats.admin_users }}</h2>
+            <p>Administrator accounts</p>
+        </div>
+
+    </div>
+
+    <div class="admin-section">
+
+        <h2>Management Modules</h2>
+
+        <div class="admin-modules">
+
+            <div class="module-card">
+                <h3>Product Management</h3>
+                <p>Manage products, prices and stock.</p>
+                <p>Integration pending.</p>
+            </div>
+
+            <div class="module-card">
+                <h3>Coupon Management</h3>
+                <p>Manage discount coupons and limits.</p>
+                <p>Integration pending.</p>
+            </div>
+
+            <div class="module-card">
+                <h3>User Management</h3>
+                <p>Review registered accounts and roles.</p>
+                <p>Next development task.</p>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

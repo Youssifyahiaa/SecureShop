@@ -1,4 +1,4 @@
-import pytest
+import pytest  # pyright: ignore[reportMissingImports]
 
 from app import create_app
 from app.config import TEST_CONFIG

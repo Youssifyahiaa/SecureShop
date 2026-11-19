@@ -112,5 +112,28 @@ def register_test_route(app):
         "/_test/login/<int:user_id>",
         endpoint="test_login_user",
         view_func=test_login,
-        methods=["POST"]
-    )    
+        methods=["POST"])
+
+def test_admin_dashboard_displays_statistics(app, client):
+
+    register_test_route(app)
+
+    admin = create_test_user(
+        "admin",
+        "dashboard-admin@test.com"
+    )
+
+    customer = create_test_user(
+        "customer",
+        "dashboard-customer@test.com"
+    )
+
+    login_as(client, admin)
+
+    response = client.get("/admin/")
+
+    assert response.status_code == 200
+    assert b"SecureShop Admin Dashboard" in response.data
+    assert b"Total Users" in response.data
+    assert b"Confirmed Users" in response.data
+    assert b"Administrators" in response.data
