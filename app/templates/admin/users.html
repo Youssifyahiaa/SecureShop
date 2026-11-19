@@ -1,0 +1,95 @@
+
+{% extends "base.html" %}
+
+{% block title %}User Management | SecureShop{% endblock %}
+
+{% block content %}
+
+<div style="max-width:1100px; margin:35px auto; padding:20px;">
+
+    <h1>User Management</h1>
+
+    <p>View and search registered SecureShop accounts.</p>
+
+    <p>
+        <a href="{{ url_for('admin.dashboard') }}">
+            Back to Admin Dashboard
+        </a>
+    </p>
+
+    <form method="GET" action="{{ url_for('admin.users') }}">
+
+        <label for="q">Search by name or email:</label>
+
+        <input
+            type="search"
+            id="q"
+            name="q"
+            value="{{ search }}"
+            maxlength="100"
+            placeholder="Enter name or email"
+        >
+
+        <button type="submit">Search</button>
+
+        {% if search %}
+            <a href="{{ url_for('admin.users') }}">
+                Clear search
+            </a>
+        {% endif %}
+
+    </form>
+
+    <p>
+        Showing up to 100 matching accounts.
+    </p>
+
+    <table border="1" cellpadding="10"
+           cellspacing="0" width="100%">
+
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Account Status</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for user in users %}
+
+                <tr>
+                    <td>{{ user.id }}</td>
+                    <td>{{ user.name }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>{{ user.role }}</td>
+
+                    <td>
+                        {% if user.confirmed_at %}
+                            Confirmed
+                        {% else %}
+                            Unconfirmed
+                        {% endif %}
+                    </td>
+                </tr>
+
+            {% else %}
+
+                <tr>
+                    <td colspan="5">
+                        No users found.
+                    </td>
+                </tr>
+
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+</div>
+
+{% endblock %}
