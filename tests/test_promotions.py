@@ -244,3 +244,58 @@ def test_redemption_rejects_nonexistent_coupon(app):
                         order_id=order_id,
                     )
                 )
+
+def test_redemption_rejects_multiple_coupons_per_order(app):
+    """An order must not have more than one coupon redemption."""
+
+    with app.app_context():
+
+        # Create one user, one order, and two valid coupons.
+        with db.engine.begin() as conn:
+            user_id = conn.execute(
+                User.__table__.insert().values(
+                    name="Single Coupon Test User",
+                    email="single-coupon@example.com",
+                    password_hash="test-only-unused-hash",
+                )
+            ).inserted_primary_key[0]
+
+            order_id = conn.execute(
+                Order.__table__.insert().values(
+                    user_id=user_id,
+                    idempotency_key="single-coupon-test-order",
+                )
+            ).inserted_primary_key[0]
+
+            first_coupon_id = conn.execute(
+                Coupon.__table__.insert().values(
+                    **coupon_data("SINGLE10")
+                )
+            ).inserted_primary_key[0]
+
+            second_coupon_id = conn.execute(
+                Coupon.__table__.insert().values(
+                    **coupon_data("SECOND10")
+                )
+            ).inserted_primary_key[0]
+
+            # First coupon redemption is valid.
+            conn.execute(
+                CouponRedemption.__table__.insert().values(
+                    coupon_id=first_coupon_id,
+                    user_id=user_id,
+                    order_id=order_id,
+                )
+            )
+
+        # A second coupon redemption for the same order
+        # must be rejected by the unique constraint.
+        with pytest.raises(IntegrityError):
+            with db.engine.begin() as conn:
+                conn.execute(
+                    CouponRedemption.__table__.insert().values(
+                        coupon_id=second_coupon_id,
+                        user_id=user_id,
+                        order_id=order_id,
+                    )
+                )
