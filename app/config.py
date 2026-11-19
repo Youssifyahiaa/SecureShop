@@ -46,6 +46,7 @@ class Config:
 
     # --- Account confirmation links ------------------------------------------
     CONFIRM_TOKEN_MAX_AGE = int(os.environ.get("CONFIRM_TOKEN_MAX_AGE", str(24 * 3600)))  # seconds
+    RESET_TOKEN_MAX_AGE = int(os.environ.get("RESET_TOKEN_MAX_AGE", str(30 * 60)))  # seconds (30 minutes)
 
     # --- Email (used for confirmation / reset links in Task 3) ---------------
     MAIL_SERVER = os.environ.get("MAIL_SERVER", "")

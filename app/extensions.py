@@ -28,9 +28,19 @@ login_manager.session_protection = "strong"
 
 @login_manager.user_loader
 def load_user(user_id):
+    """Load a user from the "<id>:<session_version>" value stored in the session.
+
+    A session created before the user's last password reset carries an old
+    version and is rejected, so the browser is treated as logged out.
+    """
     from app.models.user import User  # imported here to avoid a circular import
 
     try:
-        return db.session.get(User, int(user_id))
+        raw_id, raw_version = str(user_id).split(":", 1)
+        uid, version = int(raw_id), int(raw_version)
     except (TypeError, ValueError):
         return None
+    user = db.session.get(User, uid)
+    if user is None or user.session_version != version:
+        return None
+    return user

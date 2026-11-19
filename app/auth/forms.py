@@ -33,6 +33,19 @@ class LoginForm(FlaskForm):
     password = PasswordField("Password", validators=[DataRequired(), Length(max=MAX_PASSWORD_LENGTH)])
 
 
+def _new_password_validators():
+    """Password policy shared by registration and password reset."""
+    return [
+        DataRequired(),
+        Length(
+            min=MIN_PASSWORD_LENGTH,
+            max=MAX_PASSWORD_LENGTH,
+            message=f"Password must be between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters.",
+        ),
+        not_common_password,
+    ]
+
+
 class RegistrationForm(FlaskForm):
     name = StringField("Name", filters=[_strip], validators=[DataRequired(), Length(max=100)])
     email = StringField(
@@ -40,19 +53,24 @@ class RegistrationForm(FlaskForm):
         filters=[_normalize_email],
         validators=[DataRequired(), Length(max=255), Email()],
     )
-    password = PasswordField(
-        "Password",
-        validators=[
-            DataRequired(),
-            Length(
-                min=MIN_PASSWORD_LENGTH,
-                max=MAX_PASSWORD_LENGTH,
-                message=f"Password must be between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters.",
-            ),
-            not_common_password,
-        ],
-    )
+    password = PasswordField("Password", validators=_new_password_validators())
     confirm_password = PasswordField(
         "Confirm password",
+        validators=[DataRequired(), EqualTo("password", message="Passwords must match.")],
+    )
+
+
+class ResetRequestForm(FlaskForm):
+    email = StringField(
+        "Email",
+        filters=[_normalize_email],
+        validators=[DataRequired(), Length(max=255), Email()],
+    )
+
+
+class ResetPasswordForm(FlaskForm):
+    password = PasswordField("New password", validators=_new_password_validators())
+    confirm_password = PasswordField(
+        "Confirm new password",
         validators=[DataRequired(), EqualTo("password", message="Passwords must match.")],
     )
