@@ -10,3 +10,4 @@ from flask import Blueprint
 bp = Blueprint("auth", __name__)
 
 from . import routes  # noqa: E402,F401
+from . import session_tracking  # noqa: E402,F401

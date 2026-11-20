@@ -15,6 +15,7 @@ from app.models.user import User
 from . import bp
 from .email import send_confirmation_email, send_password_reset_email
 from .forms import LoginForm, RegistrationForm, ResetPasswordForm, ResetRequestForm
+from .session_tracking import clear_request_counter
 from .tokens import make_confirm_token, make_reset_token, read_confirm_token, read_reset_token
 
 _GENERIC = "If this email can be used, you will receive a confirmation email."
@@ -189,6 +190,7 @@ def reset_password(token):
             user.reset_nonce = None  # single use
             user.session_version += 1  # logs out every existing session for this user
             db.session.commit()
+            clear_request_counter()
             flash(_RESET_DONE)
             return redirect(url_for("auth.login"))  # never logged in automatically
         html, status = render_template("auth/reset_password.html", form=form, token=token), 200
