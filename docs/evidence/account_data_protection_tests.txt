@@ -1,0 +1,21 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\sandy\SecureShop\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\sandy\SecureShop
+configfile: pytest.ini
+collecting ... collected 12 items
+
+tests/test_account.py::test_visitor_cannot_access_account_dashboard PASSED [  8%]
+tests/test_account.py::test_visitor_cannot_access_profile PASSED         [ 16%]
+tests/test_account.py::test_customer_can_view_dashboard PASSED           [ 25%]
+tests/test_account.py::test_customer_only_sees_own_orders PASSED         [ 33%]
+tests/test_account.py::test_customer_can_view_own_profile PASSED         [ 41%]
+tests/test_account.py::test_customer_can_update_name PASSED              [ 50%]
+tests/test_account.py::test_customer_cannot_change_email_through_profile PASSED [ 58%]
+tests/test_account.py::test_profile_rejects_invalid_names[] PASSED       [ 66%]
+tests/test_account.py::test_profile_rejects_invalid_names[     ] PASSED  [ 75%]
+tests/test_account.py::test_profile_rejects_invalid_names[invalid_name2] PASSED [ 83%]
+tests/test_account.py::test_admin_can_access_own_account PASSED          [ 91%]
+tests/test_account.py::test_profile_update_creates_audit_event PASSED    [100%]
+
+============================= 12 passed in 0.29s ==============================

@@ -1,0 +1,40 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\sandy\SecureShop\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\sandy\SecureShop
+configfile: pytest.ini
+collecting ... collected 31 items
+
+tests/test_audit.py::test_log_event_creates_record PASSED                [  3%]
+tests/test_audit.py::test_log_event_records_user_and_actor PASSED        [  6%]
+tests/test_audit.py::test_log_event_records_details_as_json PASSED       [  9%]
+tests/test_audit.py::test_log_event_records_ip_address PASSED            [ 12%]
+tests/test_audit.py::test_log_event_records_utc_timestamp PASSED         [ 16%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details0] PASSED [ 19%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details1] PASSED [ 22%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details2] PASSED [ 25%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details3] PASSED [ 29%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details4] PASSED [ 32%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details5] PASSED [ 35%]
+tests/test_audit.py::test_log_event_rejects_details_over_2kb PASSED      [ 38%]
+tests/test_audit.py::test_log_event_rejects_invalid_event_type[] PASSED  [ 41%]
+tests/test_audit.py::test_log_event_rejects_invalid_event_type[INVALID EVENT] PASSED [ 45%]
+tests/test_audit.py::test_log_event_rejects_invalid_event_type[LOGIN FAILED] PASSED [ 48%]
+tests/test_audit.py::test_log_event_rejects_invalid_event_type[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa] PASSED [ 51%]
+tests/test_audit.py::test_log_event_rejects_invalid_event_type[login-failed] PASSED [ 54%]
+tests/test_audit.py::test_log_event_rejects_non_dictionary_details PASSED [ 58%]
+tests/test_audit.py::test_log_event_rejects_invalid_user_id PASSED       [ 61%]
+tests/test_audit.py::test_log_event_does_not_commit_caller_transaction PASSED [ 64%]
+tests/test_admin_audit.py::test_visitor_cannot_view_audit_logs PASSED    [ 67%]
+tests/test_admin_audit.py::test_customer_cannot_view_audit_logs PASSED   [ 70%]
+tests/test_admin_audit.py::test_admin_can_view_audit_logs PASSED         [ 74%]
+tests/test_admin_audit.py::test_empty_audit_logs_message PASSED          [ 77%]
+tests/test_admin_audit.py::test_search_audit_logs_by_event_type PASSED   [ 80%]
+tests/test_admin_audit.py::test_search_audit_logs_by_ip PASSED           [ 83%]
+tests/test_admin_audit.py::test_audit_logs_pagination_and_order PASSED   [ 87%]
+tests/test_admin_risk_integration.py::test_normal_admin_session_is_allowed PASSED [ 90%]
+tests/test_admin_risk_integration.py::test_medium_risk_admin_is_denied_and_audited PASSED [ 93%]
+tests/test_admin_risk_integration.py::test_high_risk_admin_is_denied_and_audited PASSED [ 96%]
+tests/test_admin_risk_integration.py::test_critical_risk_logs_out_admin PASSED [100%]
+
+============================= 31 passed in 0.54s ==============================

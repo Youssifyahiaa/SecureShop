@@ -472,60 +472,158 @@ The requirements will be reviewed and updated as
 the application features become available.
 
 
-## Session Risk Scoring
+
+## Session Risk Scoring and Enforcement
 
 ### Purpose
-SecureShop implements a session risk scoring mechanism to identify
-potentially suspicious authenticated sessions.
 
-The mechanism provides a numerical risk score between 0 and 100.
-It does not independently block users or invalidate sessions.
+SecureShop implements a deterministic session-risk
+assessment mechanism to identify suspicious authenticated
+sessions.
+
+The mechanism calculates a score between 0 and 100
+and identifies the signals responsible for the score.
 
 ### Implementation
-File: app/admin/session_risk.py
 
-Function:
-score_session_risk(user, request) -> int
+Main file: app/admin/session_risk.py
+
+Primary function:
+
+assess_session_risk(
+    user,
+    request,
+    session_data,
+    *,
+    now,
+    request_timestamps=()
+) -> SessionRiskResult
+
+Numeric wrapper:
+
+score_session_risk(
+    user,
+    request,
+    session_data,
+    *,
+    now,
+    request_timestamps=()
+) -> int
+
+The assessment function is pure: it receives the current
+time explicitly, does not read the system clock, does not
+modify the session, and does not write audit records.
+
+### Login Baselines
+
+On successful login, app/auth/routes.py stores:
+
+- login_ua_hash: SHA-256 hash of the User-Agent.
+- login_ip: IP address at login.
+- login_role: User role at login.
+- login_at: UTC ISO timestamp of login.
+
+No raw authentication cookies or tokens are stored.
+
+The risk assessment compares the User-Agent hash,
+IP address, and role against their login baselines.
+The login timestamp is recorded but is not currently
+used as a scoring signal.
 
 ### Risk Indicators
 
 | Indicator | Risk Points |
 |---|---:|
-| Non-fresh session | 40 |
-| Non-permanent session | 15 |
+| Invalid session/user binding | 100 |
+| Non-fresh session | 10 |
+| Non-permanent session | 10 |
 | Missing User-Agent | 10 |
-| Missing client IP address | 10 |
-| Invalid user/session binding | 100 |
+| Missing client IP | 10 |
+| Changed User-Agent | 30 |
+| Changed IP address | 15 |
+| Request burst (>30 requests in 60 seconds) | 25 |
+| Database role differs from login role | 50 |
 
-The final score is restricted to the range 0-100.
+The final score is capped at 100.
 
-### Security Rules
+### Risk Levels
 
-1. Only authenticated users with a matching session binding
-   can receive a normal calculated score.
-2. Invalid or mismatched sessions receive a score of 100.
-3. The function must not modify authentication sessions.
-4. The function must not independently log out or block users.
-5. The function must not collect or store passwords, tokens,
-   cookies, or other authentication secrets.
-6. Existing Flask-Login session protection and session-version
-   validation must remain unchanged.
+| Score | Level | Policy |
+|---|---|---|
+| 0-29 | Low | Allow |
+| 30-59 | Medium | Additional administrator verification required |
+| 60-99 | High | Strong administrator re-verification required |
+| 100 | Critical | Log out and record an audit event |
+
+### Administrator Enforcement
+
+File: app/admin/decorators.py
+
+The administrator authorization decorator:
+
+1. Requires authentication.
+2. Requires the administrator role.
+3. Calculates session risk.
+4. Allows low-risk sessions.
+5. Audits and denies medium/high-risk sessions
+   with HTTP 403 while MFA is unavailable.
+6. Audits and logs out critical-risk sessions.
+
+TOTP/passkey verification is not yet implemented.
+The current denial behavior is an interim security policy,
+not a completed MFA implementation.
+
+### Request Burst Integration
+
+The assessment function supports request timestamps
+and detects more than 30 requests within 60 seconds.
+
+Automated tests verify this calculation using supplied
+timestamps.
+
+However, the live administrator decorator currently
+passes an empty timestamp collection. Therefore,
+request-burst detection is tested at the assessment
+level but is not yet integrated into live request tracking.
+
+### Checkout Step-Up
+
+Password re-verification for high-risk checkout
+is part of the planned security policy.
+
+It must not be described as implemented until
+checkout integration and its tests are completed.
 
 ### Testing
 
-Automated tests are located in:
+Automated tests:
 
-tests/test_session_risk.py
+- tests/test_session_risk.py
+- tests/test_admin_risk_policy.py
+- tests/test_admin_risk_integration.py
+- tests/test_auth.py
 
-The tests cover normal sessions, non-fresh sessions,
-non-permanent sessions, missing browser information,
-missing IP addresses, combined risk indicators,
-invalid session bindings, and missing request contexts.
+Saved evidence:
+
+- docs/evidence/session_security_tests.txt
+- docs/evidence/auth_session_baseline_tests.txt
+- docs/evidence/phase1_full_test_suite.txt
+
+Latest recorded results:
+
+- Session risk, policy and integration: 45 passed.
+- Authentication: 34 passed.
+- Full application suite: 193 passed.
 
 ### Integration Status
 
-The initial implementation and automated tests are complete.
+Session-risk calculation, login baseline storage,
+and administrator risk enforcement are implemented
+and have passed their recorded automated tests.
 
-Risk weights and enforcement thresholds require review
-and approval before integration into authentication
-or administrative security workflows.
+Remaining integration work:
+
+- Connect real request-burst tracking.
+- Implement TOTP/passkey verification.
+- Integrate high-risk checkout password re-verification.
+- Verify the complete workflow after team integration.

@@ -1,0 +1,31 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\sandy\SecureShop\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\sandy\SecureShop
+configfile: pytest.ini
+collecting ... collected 22 items
+
+tests/test_naive_audit_demo.py::test_naive_logger_commits_unrelated_changes PASSED [  4%]
+tests/test_naive_audit_demo.py::test_secure_logger_does_not_commit_unrelated_changes PASSED [  9%]
+tests/test_audit.py::test_log_event_creates_record PASSED                [ 13%]
+tests/test_audit.py::test_log_event_records_user_and_actor PASSED        [ 18%]
+tests/test_audit.py::test_log_event_records_details_as_json PASSED       [ 22%]
+tests/test_audit.py::test_log_event_records_ip_address PASSED            [ 27%]
+tests/test_audit.py::test_log_event_records_utc_timestamp PASSED         [ 31%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details0] PASSED [ 36%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details1] PASSED [ 40%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details2] PASSED [ 45%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details3] PASSED [ 50%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details4] PASSED [ 54%]
+tests/test_audit.py::test_log_event_rejects_sensitive_information[details5] PASSED [ 59%]
+tests/test_audit.py::test_log_event_rejects_details_over_2kb PASSED      [ 63%]
+tests/test_audit.py::test_log_event_rejects_invalid_event_type[] PASSED  [ 68%]
+tests/test_audit.py::test_log_event_rejects_invalid_event_type[INVALID EVENT] PASSED [ 72%]
+tests/test_audit.py::test_log_event_rejects_invalid_event_type[LOGIN FAILED] PASSED [ 77%]
+tests/test_audit.py::test_log_event_rejects_invalid_event_type[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa] PASSED [ 81%]
+tests/test_audit.py::test_log_event_rejects_invalid_event_type[login-failed] PASSED [ 86%]
+tests/test_audit.py::test_log_event_rejects_non_dictionary_details PASSED [ 90%]
+tests/test_audit.py::test_log_event_rejects_invalid_user_id PASSED       [ 95%]
+tests/test_audit.py::test_log_event_does_not_commit_caller_transaction PASSED [100%]
+
+============================= 22 passed in 0.29s ==============================

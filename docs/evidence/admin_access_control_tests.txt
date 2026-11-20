@@ -1,0 +1,13 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\sandy\SecureShop\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\sandy\SecureShop
+configfile: pytest.ini
+collecting ... collected 4 items
+
+tests/test_admin.py::test_visitor_cannot_access_admin PASSED             [ 25%]
+tests/test_admin.py::test_customer_cannot_access_admin PASSED            [ 50%]
+tests/test_admin.py::test_admin_can_access_admin PASSED                  [ 75%]
+tests/test_admin.py::test_admin_dashboard_displays_statistics PASSED     [100%]
+
+============================== 4 passed in 0.16s ==============================

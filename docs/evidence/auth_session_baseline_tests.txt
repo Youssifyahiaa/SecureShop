@@ -1,0 +1,43 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\sandy\SecureShop\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\sandy\SecureShop
+configfile: pytest.ini
+collecting ... collected 34 items
+
+tests/test_auth.py::test_valid_registration_creates_unconfirmed_customer PASSED [  2%]
+tests/test_auth.py::test_duplicate_email_does_not_create_second_user PASSED [  5%]
+tests/test_auth.py::test_register_new_and_existing_email_responses_identical PASSED [  8%]
+tests/test_auth.py::test_short_password_rejected PASSED                  [ 11%]
+tests/test_auth.py::test_common_password_rejected PASSED                 [ 14%]
+tests/test_auth.py::test_mismatched_confirmation_rejected PASSED         [ 17%]
+tests/test_auth.py::test_extra_fields_ignored PASSED                     [ 20%]
+tests/test_auth.py::test_plaintext_password_not_stored PASSED            [ 23%]
+tests/test_auth.py::test_hashes_differ_and_are_argon2id PASSED           [ 26%]
+tests/test_auth.py::test_check_password PASSED                           [ 29%]
+tests/test_auth.py::test_unconfirmed_user_cannot_login PASSED            [ 32%]
+tests/test_auth.py::test_unconfirmed_message_not_shown_for_wrong_password PASSED [ 35%]
+tests/test_auth.py::test_registration_logs_link_but_page_does_not PASSED [ 38%]
+tests/test_auth.py::test_valid_token_confirms_account PASSED             [ 41%]
+tests/test_auth.py::test_expired_token_rejected PASSED                   [ 44%]
+tests/test_auth.py::test_tampered_token_rejected PASSED                  [ 47%]
+tests/test_auth.py::test_wrong_purpose_or_salt_rejected PASSED           [ 50%]
+tests/test_auth.py::test_reused_token_does_not_change_confirmed_at PASSED [ 52%]
+tests/test_auth.py::test_good_login_works PASSED                         [ 55%]
+tests/test_auth.py::test_wrong_password_and_unknown_email_identical PASSED [ 58%]
+tests/test_auth.py::test_external_next_ignored[https://evil.com/x] PASSED [ 61%]
+tests/test_auth.py::test_external_next_ignored[//evil.com] PASSED        [ 64%]
+tests/test_auth.py::test_external_next_ignored[http://evil.com] PASSED   [ 67%]
+tests/test_auth.py::test_external_next_ignored[/\\evil.com] PASSED       [ 70%]
+tests/test_auth.py::test_external_next_ignored[javascript:alert(1)] PASSED [ 73%]
+tests/test_auth.py::test_relative_next_followed PASSED                   [ 76%]
+tests/test_auth.py::test_login_clears_old_session_and_is_permanent PASSED [ 79%]
+tests/test_auth.py::test_successful_login_stores_risk_baselines PASSED   [ 82%]
+tests/test_auth.py::test_failed_login_does_not_store_risk_baselines PASSED [ 85%]
+tests/test_auth.py::test_logout_post_only_then_protected_redirects PASSED [ 88%]
+tests/test_auth.py::test_logout_requires_login PASSED                    [ 91%]
+tests/test_auth.py::test_logout_requires_csrf PASSED                     [ 94%]
+tests/test_auth.py::test_navbar_links_when_anonymous PASSED              [ 97%]
+tests/test_auth.py::test_rate_limit_login_6th_attempt_429 PASSED         [100%]
+
+============================= 34 passed in 3.10s ==============================
