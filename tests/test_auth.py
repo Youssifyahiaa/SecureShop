@@ -1,7 +1,7 @@
 import logging
 import re
 from datetime import datetime
-
+import hashlib
 import pytest
 from flask import Blueprint
 from flask_login import login_required
@@ -253,6 +253,52 @@ def test_login_clears_old_session_and_is_permanent(client):
     login(client)
     with client.session_transaction() as s:
         assert "planted" not in s and s.permanent
+
+
+def test_successful_login_stores_risk_baselines(client):
+    make_user()
+
+    user_agent = "SecureShopTest/1.0"
+    remote_addr = "198.51.100.27"
+
+    response = login(
+        client,
+        headers={"User-Agent": user_agent},
+        environ_overrides={"REMOTE_ADDR": remote_addr}
+    )
+
+    assert response.status_code == 302
+
+    with client.session_transaction() as s:
+        expected_hash = hashlib.sha256(
+            user_agent.encode("utf-8")
+        ).hexdigest()
+
+        assert s["login_ua_hash"] == expected_hash
+        assert s["login_ip"] == remote_addr
+        assert s["login_role"] == "customer"
+
+        login_at = datetime.fromisoformat(s["login_at"])
+
+        assert login_at.tzinfo is not None
+        assert login_at.utcoffset().total_seconds() == 0
+
+
+def test_failed_login_does_not_store_risk_baselines(client):
+    make_user()
+
+    response = login(
+        client,
+        password="wrong-password-here"
+    )
+
+    assert response.status_code == 200
+
+    with client.session_transaction() as s:
+        assert "login_ua_hash" not in s
+        assert "login_ip" not in s
+        assert "login_role" not in s
+        assert "login_at" not in s
 
 
 def test_logout_post_only_then_protected_redirects(app_with_protected):

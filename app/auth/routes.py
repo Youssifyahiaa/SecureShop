@@ -1,6 +1,7 @@
 import hmac
 import re
 import secrets
+import hashlib
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -9,6 +10,8 @@ from flask_login import login_required, login_user, logout_user
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db, limiter
+from app.models import user
+from app.models import user
 from app.models.user import User
 
 from . import bp
@@ -121,6 +124,16 @@ def login():
             session["cart"] = guest_cart
         login_user(user)
         session.permanent = True
+
+        # Establish the trusted login baseline for session-risk detection.
+        user_agent = request.user_agent.string or ""
+        session["login_ua_hash"] = hashlib.sha256(
+            user_agent.encode("utf-8")
+        ).hexdigest()
+        session["login_ip"] = request.remote_addr
+        session["login_role"] = user.role
+        session["login_at"] = datetime.now(timezone.utc).isoformat()
+
         return redirect_to_next()
     if request.method == "POST" and "csrf_token" not in form.errors:
         flash(_BAD_LOGIN)  # e.g. empty fields: same generic message
