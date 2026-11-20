@@ -10,8 +10,6 @@ from flask_login import login_required, login_user, logout_user
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db, limiter
-from app.models import user
-from app.models import user
 from app.models.user import User
 
 from . import bp

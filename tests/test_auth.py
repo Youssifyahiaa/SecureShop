@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import datetime
 import hashlib
+
 import pytest
 from flask import Blueprint
 from flask_login import login_required
@@ -330,6 +331,32 @@ def test_logout_requires_csrf():
         db.session.remove()
         db.drop_all()
 
+def test_logout_clears_login_risk_baselines(client):
+    make_user()
+
+    response = login(client)
+    assert response.status_code == 302
+
+    baseline_keys = (
+        "login_ua_hash",
+        "login_ip",
+        "login_role",
+        "login_at",
+    )
+
+    # Verify the baselines exist after login.
+    with client.session_transaction() as s:
+        for key in baseline_keys:
+            assert key in s
+
+    # Log out.
+    response = client.post("/logout")
+    assert response.status_code == 302
+
+    # Verify the baselines were removed.
+    with client.session_transaction() as s:
+        for key in baseline_keys:
+            assert key not in s
 
 def test_navbar_links_when_anonymous(client):
     page = client.get("/").data
