@@ -1,0 +1,38 @@
+
+{% extends "base.html" %}
+
+{% block title %}Newsletter - SecureShop{% endblock %}
+
+{% block content %}
+  <h1>Subscribe to our newsletter</h1>
+
+  <p>
+    Receive SecureShop updates and a welcome coupon
+    when you subscribe.
+  </p>
+
+  <form method="post"
+        action="{{ url_for('promotions.newsletter_subscribe') }}"
+        novalidate>
+
+    {{ form.csrf_token }}
+
+    <p>
+      {{ form.email.label }}<br>
+      {{ form.email(
+          type="email",
+          autocomplete="email",
+          required=True
+      ) }}
+
+      {% for error in form.email.errors %}
+        <br><span class="error">{{ error }}</span>
+      {% endfor %}
+    </p>
+
+    <p>
+      <button type="submit">Subscribe</button>
+    </p>
+
+  </form>
+{% endblock %}

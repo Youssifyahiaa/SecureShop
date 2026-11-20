@@ -23,6 +23,12 @@ class Coupon(db.Model):
         index=True,
     )
 
+    assigned_email = db.Column(
+        db.String(255),
+        nullable=True,
+        index=True,
+    )
+
     kind = db.Column(
         db.String(10),
         nullable=False,

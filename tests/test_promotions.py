@@ -11,6 +11,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, func
+from app.promotions.service import create_newsletter_subscription
 
 from app.extensions import db
 from app.models.promotion import Coupon, NewsletterSubscriber, CouponRedemption
@@ -299,3 +301,34 @@ def test_redemption_rejects_multiple_coupons_per_order(app):
                         order_id=order_id,
                     )
                 )
+def test_newsletter_duplicate_normalized_email_issues_one_coupon(app):
+    """Repeated signups must not create additional welcome coupons."""
+
+    with app.app_context():
+        coupons_before = db.session.scalar(
+            select(func.count()).select_from(Coupon)
+        )
+        subscribers_before = db.session.scalar(
+            select(func.count()).select_from(NewsletterSubscriber)
+        )
+
+        first = create_newsletter_subscription(
+            "  NEWSLETTER-TEST@Example.COM  "
+        )
+
+        duplicate = create_newsletter_subscription(
+            "newsletter-test@example.com"
+        )
+
+        coupons_after = db.session.scalar(
+            select(func.count()).select_from(Coupon)
+        )
+        subscribers_after = db.session.scalar(
+            select(func.count()).select_from(NewsletterSubscriber)
+        )
+
+        assert first is not None
+        assert first.assigned_email == "newsletter-test@example.com"
+        assert duplicate is None
+        assert coupons_after == coupons_before + 1
+        assert subscribers_after == subscribers_before + 1

@@ -21,6 +21,7 @@ def upgrade():
     op.create_table('coupons',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('code', sa.String(length=64), nullable=False),
+    sa.Column('assigned_email', sa.String(length=255), nullable=True),
     sa.Column('kind', sa.String(length=10), nullable=False),
     sa.Column('amount', sa.Numeric(precision=10, scale=2), nullable=False),
     sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
@@ -37,8 +38,21 @@ def upgrade():
     sa.CheckConstraint('used_count >= 0', name='ck_coupons_used_count'),
     sa.PrimaryKeyConstraint('id')
     )
+
+
     with op.batch_alter_table('coupons', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_coupons_code'), ['code'], unique=True)
+        batch_op.create_index(
+            batch_op.f('ix_coupons_code'),
+            ['code'],
+            unique=True,
+        )
+        batch_op.create_index(
+            batch_op.f('ix_coupons_assigned_email'),
+            ['assigned_email'],
+            unique=False,
+        )
+
+
 
     op.create_table('newsletter_subscribers',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -83,6 +97,7 @@ def downgrade():
 
     op.drop_table('newsletter_subscribers')
     with op.batch_alter_table('coupons', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_coupons_assigned_email'))
         batch_op.drop_index(batch_op.f('ix_coupons_code'))
 
     op.drop_table('coupons')
