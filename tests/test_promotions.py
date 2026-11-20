@@ -12,12 +12,16 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select, func
-from app.promotions.service import create_newsletter_subscription
+from app.promotions.service import (
+    create_newsletter_subscription,
+    coupon_recipient_matches_user,
+)
 
 from app.extensions import db
 from app.models.promotion import Coupon, NewsletterSubscriber, CouponRedemption
 from app.models.user import User
 from app.models.order import Order
+from app.promotions.service import coupon_recipient_matches_user_id
 
 
 @pytest.fixture
@@ -332,3 +336,97 @@ def test_newsletter_duplicate_normalized_email_issues_one_coupon(app):
         assert duplicate is None
         assert coupons_after == coupons_before + 1
         assert subscribers_after == subscribers_before + 1
+
+def test_personal_coupon_recipient_binding():
+    """Personal coupons require the matching, confirmed account."""
+
+    coupon = Coupon(
+        assigned_email="ali@example.com",
+    )
+
+    confirmed_owner = User(
+        email="ali@example.com",
+        confirmed_at=datetime.now(timezone.utc),
+    )
+
+    forwarded_recipient = User(
+        email="ahmed@example.com",
+        confirmed_at=datetime.now(timezone.utc),
+    )
+
+    unconfirmed_owner = User(
+        email="ali@example.com",
+        confirmed_at=None,
+    )
+
+    public_coupon = Coupon(
+        assigned_email=None,
+    )
+
+    assert coupon_recipient_matches_user(
+        coupon, confirmed_owner
+    ) is True
+
+    assert coupon_recipient_matches_user(
+        coupon, forwarded_recipient
+    ) is False
+
+    assert coupon_recipient_matches_user(
+        coupon, unconfirmed_owner
+    ) is False
+
+    assert coupon_recipient_matches_user(
+        coupon, None
+    ) is False
+
+    assert coupon_recipient_matches_user(
+        public_coupon, confirmed_owner
+    ) is True
+
+
+def test_coupon_recipient_verified_against_database_user(app):
+    """A personal coupon must match the real confirmed database user."""
+
+    with app.app_context():
+        owner = User(
+            name="Coupon Owner",
+            email="owner@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=datetime.now(timezone.utc),
+        )
+
+        other_user = User(
+            name="Other Customer",
+            email="other@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=datetime.now(timezone.utc),
+        )
+
+        unconfirmed = User(
+            name="Unconfirmed Owner",
+            email="pending@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=None,
+        )
+
+        db.session.add_all([owner, other_user, unconfirmed])
+        db.session.commit()
+
+        coupon = Coupon(assigned_email="owner@example.com")
+        pending_coupon = Coupon(assigned_email="pending@example.com")
+
+        assert coupon_recipient_matches_user_id(
+            coupon, owner.id
+        ) is True
+
+        assert coupon_recipient_matches_user_id(
+            coupon, other_user.id
+        ) is False
+
+        assert coupon_recipient_matches_user_id(
+            pending_coupon, unconfirmed.id
+        ) is False
+
+        assert coupon_recipient_matches_user_id(
+            coupon, 999999
+        ) is False

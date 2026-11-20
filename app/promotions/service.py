@@ -10,12 +10,55 @@ from decimal import Decimal
 from app.models.promotion import Coupon
 from .forms import normalize_email
 
+from dataclasses import dataclass
+
+from app.models.user import User
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models.promotion import NewsletterSubscriber
 
+
+
+@dataclass(frozen=True)
+class CouponResult:
+    """Safe result returned by coupon validation."""
+
+    valid: bool
+    discount: Decimal
+    reason: str
+    coupon_id: int | None
+
+
+def coupon_recipient_matches_user(coupon: Coupon, user: User | None) -> bool:
+    """Check whether a user may use a recipient-restricted coupon."""
+
+    # Public coupons have no recipient restriction.
+    if coupon.assigned_email is None:
+        return True
+
+    # Personal coupons require a real, confirmed account.
+    if user is None or not user.is_confirmed:
+        return False
+
+    # The authenticated account must own the assigned email.
+    return normalize_email(user.email) == coupon.assigned_email
+
+
+def coupon_recipient_matches_user_id(
+    coupon: Coupon,
+    user_id: int,
+) -> bool:
+    """Verify coupon ownership using the real database account."""
+
+    user = db.session.get(User, user_id)
+
+    if user is None or not user.is_confirmed:
+        return False
+
+    return coupon_recipient_matches_user(coupon, user)
 
 
 def generate_welcome_coupon_code():
