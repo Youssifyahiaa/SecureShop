@@ -5,11 +5,12 @@ Database constraint tests for SecureShop Promotions.
 Owner: Ali
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import create_engine
+from app.promotions.service import validate_coupon
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select, func
 from app.promotions.service import (
@@ -430,3 +431,370 @@ def test_coupon_recipient_verified_against_database_user(app):
         assert coupon_recipient_matches_user_id(
             coupon, 999999
         ) is False
+
+def test_validate_valid_public_percentage_coupon(app):
+    """A valid public 10% coupon gives the correct discount."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        user = User(
+            name="Coupon Test Customer",
+            email="valid-coupon@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="PUBLIC10",
+            assigned_email=None,
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now + timedelta(days=1),
+            active=True,
+            max_uses=10,
+            per_user_limit=1,
+            used_count=0,
+        )
+
+        db.session.add_all([user, coupon])
+        db.session.commit()
+
+        result = validate_coupon(
+            user_id=user.id,
+            code=" public10 ",
+            subtotal=Decimal("200.00"),
+            now=now,
+        )
+
+        assert result.valid is True
+        assert result.discount == Decimal("20.00")
+        assert result.coupon_id == coupon.id
+
+def test_validate_personal_coupon_requires_confirmed_owner(app):
+    """Only the matching confirmed account may validate a personal coupon."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        owner = User(
+            name="Newsletter Owner",
+            email="owner-newsletter@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=None,
+        )
+
+        other_user = User(
+            name="Another Customer",
+            email="other-newsletter@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="NL-PERSONAL-TEST",
+            assigned_email="owner-newsletter@example.com",
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now + timedelta(days=7),
+            active=True,
+            max_uses=1,
+            per_user_limit=1,
+            used_count=0,
+        )
+
+        db.session.add_all([owner, other_user, coupon])
+        db.session.commit()
+
+        # Scenario 1: Another confirmed user has the coupon code.
+        forwarded = validate_coupon(
+            user_id=other_user.id,
+            code=coupon.code,
+            subtotal=Decimal("100.00"),
+            now=now,
+        )
+
+        assert forwarded.valid is False
+        assert forwarded.discount == Decimal("0.00")
+        assert forwarded.coupon_id is None
+
+        # Scenario 2: Correct owner, but account is unconfirmed.
+        unconfirmed = validate_coupon(
+            user_id=owner.id,
+            code=coupon.code,
+            subtotal=Decimal("100.00"),
+            now=now,
+        )
+
+        assert unconfirmed.valid is False
+
+        # Scenario 3: Owner confirms their account.
+        owner.confirmed_at = now
+        db.session.commit()
+
+        confirmed = validate_coupon(
+            user_id=owner.id,
+            code=coupon.code,
+            subtotal=Decimal("100.00"),
+            now=now,
+        )
+
+        assert confirmed.valid is True
+        assert confirmed.discount == Decimal("10.00")
+        assert confirmed.coupon_id == coupon.id
+
+def test_validate_expired_coupon_rejected(app):
+    """Expired coupons must never receive a discount."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        user = User(
+            name="Expiration Test Customer",
+            email="expiration-test@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="EXPIRED10",
+            assigned_email=None,
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now - timedelta(minutes=1),
+            active=True,
+            max_uses=10,
+            per_user_limit=1,
+            used_count=0,
+        )
+
+        db.session.add_all([user, coupon])
+        db.session.commit()
+
+        # Scenario 1: Coupon expired one minute ago.
+        expired = validate_coupon(
+            user_id=user.id,
+            code="EXPIRED10",
+            subtotal=Decimal("200.00"),
+            now=now,
+        )
+
+        assert expired.valid is False
+        assert expired.discount == Decimal("0.00")
+        assert expired.coupon_id is None
+
+        # Scenario 2: Current time equals expiration time.
+        coupon.expires_at = now
+        db.session.commit()
+
+        at_expiration = validate_coupon(
+            user_id=user.id,
+            code="EXPIRED10",
+            subtotal=Decimal("200.00"),
+            now=now,
+        )
+
+        assert at_expiration.valid is False
+        assert at_expiration.discount == Decimal("0.00")
+        assert at_expiration.coupon_id is None
+
+def test_validate_inactive_coupon_rejected(app):
+    """Inactive coupons must not provide a discount."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        user = User(
+            name="Inactive Coupon Test",
+            email="inactive-test@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="INACTIVE10",
+            assigned_email=None,
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now + timedelta(days=7),
+            active=False,
+            max_uses=10,
+            per_user_limit=1,
+            used_count=0,
+        )
+
+        db.session.add_all([user, coupon])
+        db.session.commit()
+
+        result = validate_coupon(
+            user_id=user.id,
+            code="INACTIVE10",
+            subtotal=Decimal("200.00"),
+            now=now,
+        )
+
+        assert result.valid is False
+        assert result.discount == Decimal("0.00")
+        assert result.coupon_id is None
+
+def test_validate_coupon_global_limit_reached(app):
+    """A coupon cannot exceed its global redemption limit."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        user = User(
+            name="Global Limit Test User",
+            email="global-limit@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="LIMITREACHED10",
+            assigned_email=None,
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now + timedelta(days=7),
+            active=True,
+            max_uses=1,
+            per_user_limit=1,
+            used_count=1,
+        )
+
+        db.session.add_all([user, coupon])
+        db.session.commit()
+
+        result = validate_coupon(
+            user_id=user.id,
+            code="LIMITREACHED10",
+            subtotal=Decimal("200.00"),
+            now=now,
+        )
+
+        assert result.valid is False
+        assert result.discount == Decimal("0.00")
+        assert result.coupon_id is None
+
+        # Validation must not change the usage counter.
+        db.session.refresh(coupon)
+        assert coupon.used_count == 1
+
+def test_validate_coupon_per_user_limit_reached(app):
+    """Reject a coupon when this user reached their usage limit."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        user = User(
+            name="Per-User Limit Customer",
+            email="per-user-limit@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="PERUSER10",
+            assigned_email=None,
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now + timedelta(days=7),
+            active=True,
+            max_uses=10,
+            per_user_limit=1,
+            used_count=1,
+        )
+
+        db.session.add_all([user, coupon])
+        db.session.flush()
+
+        # Create a real previous order for this customer.
+        order = Order(
+            user_id=user.id,
+            idempotency_key="per-user-limit-test-order",
+        )
+
+        db.session.add(order)
+        db.session.flush()
+
+        # Record one previous successful coupon redemption.
+        redemption = CouponRedemption(
+            coupon_id=coupon.id,
+            user_id=user.id,
+            order_id=order.id,
+        )
+
+        db.session.add(redemption)
+        db.session.commit()
+
+        # Customer tries to use the same coupon again.
+        result = validate_coupon(
+            user_id=user.id,
+            code="PERUSER10",
+            subtotal=Decimal("200.00"),
+            now=now,
+        )
+
+        assert result.valid is False
+        assert result.discount == Decimal("0.00")
+        assert result.coupon_id is None
+
+        # Validation must not consume another use.
+        db.session.refresh(coupon)
+        assert coupon.used_count == 1
+
+def test_validate_fixed_coupon_capped_at_subtotal(app):
+    """Fixed discounts must never exceed the order subtotal."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        user = User(
+            name="Fixed Discount Customer",
+            email="fixed-discount@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="FIXED75",
+            assigned_email=None,
+            kind="fixed",
+            amount=Decimal("75.00"),
+            expires_at=now + timedelta(days=7),
+            active=True,
+            max_uses=10,
+            per_user_limit=1,
+            used_count=0,
+        )
+
+        db.session.add_all([user, coupon])
+        db.session.commit()
+
+        # Scenario 1: Subtotal is greater than the discount.
+        normal = validate_coupon(
+            user_id=user.id,
+            code="FIXED75",
+            subtotal=Decimal("200.00"),
+            now=now,
+        )
+
+        assert normal.valid is True
+        assert normal.discount == Decimal("75.00")
+        assert normal.coupon_id == coupon.id
+
+        # Scenario 2: Discount exceeds the subtotal.
+        capped = validate_coupon(
+            user_id=user.id,
+            code="FIXED75",
+            subtotal=Decimal("40.00"),
+            now=now,
+        )
+
+        assert capped.valid is True
+        assert capped.discount == Decimal("40.00")
+        assert capped.coupon_id == coupon.id
+
+        # Previewing must not consume the coupon.
+        db.session.refresh(coupon)
+        assert coupon.used_count == 0

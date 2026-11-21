@@ -6,6 +6,9 @@ Owner: Ali
 import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from decimal import ROUND_HALF_UP
+from sqlalchemy import func
+from app.models.promotion import CouponRedemption
 
 from app.models.promotion import Coupon
 from .forms import normalize_email
@@ -133,3 +136,107 @@ def create_newsletter_subscription(email):
         raise
 
     return coupon
+
+def validate_coupon(user_id, code, subtotal, now) -> CouponResult:
+    """Validate a coupon without changing database records.
+
+    This initial implementation fails closed until all
+    eligibility and discount checks are implemented.
+    """
+
+    invalid = CouponResult(
+        valid=False,
+        discount=Decimal("0.00"),
+        reason="This coupon cannot be applied.",
+        coupon_id=None,
+    )
+
+    # Reject malformed or excessively long input.
+    if not isinstance(code, str):
+        return invalid
+
+    normalized_code = code.strip().upper()
+
+    if not normalized_code or len(normalized_code) > 64:
+        return invalid
+
+    # Look up the coupon using the database.
+    coupon = db.session.scalar(
+        select(Coupon).where(Coupon.code == normalized_code)
+    )
+
+    # Reject unknown or inactive coupons.
+    if coupon is None or not coupon.active:
+        return invalid
+    # Require a valid, nonnegative monetary subtotal.
+    if (
+        not isinstance(subtotal, Decimal)
+        or not subtotal.is_finite()
+        or subtotal < 0
+    ):
+        return invalid
+
+    # The trusted caller must supply a timezone-aware time.
+    if (
+        not isinstance(now, datetime)
+        or now.tzinfo is None
+        or now.utcoffset() is None
+    ):
+        return invalid
+
+    # SQLite may return timezone-naive timestamps.
+    # Coupon expiration values are stored by our policy in UTC.
+    expires_at = coupon.expires_at
+
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if now >= expires_at:
+        return invalid
+
+    # Verify the actual confirmed database user.
+    # Personal coupons also require a matching email.
+    if not coupon_recipient_matches_user_id(coupon, user_id):
+        return invalid
+
+    # Check the global usage limit.
+    if (
+        coupon.max_uses is not None
+        and coupon.used_count >= coupon.max_uses
+    ):
+        return invalid
+
+    # Check this customer's previous redemptions.
+    if coupon.per_user_limit is not None:
+        previous_uses = db.session.scalar(
+            select(func.count(CouponRedemption.id)).where(
+                CouponRedemption.coupon_id == coupon.id,
+                CouponRedemption.user_id == user_id,
+            )
+        )
+
+        if previous_uses >= coupon.per_user_limit:
+            return invalid
+
+    # Calculate the discount using Decimal arithmetic.
+    if coupon.kind == "percent":
+        discount = (
+            subtotal * coupon.amount / Decimal("100")
+        )
+    elif coupon.kind == "fixed":
+        discount = coupon.amount
+    else:
+        return invalid
+
+    # A discount must never exceed the order subtotal.
+    discount = min(subtotal, discount).quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
+
+    return CouponResult(
+        valid=True,
+        discount=discount,
+        reason="Coupon applied.",
+        coupon_id=coupon.id,
+    )
