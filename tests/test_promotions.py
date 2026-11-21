@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from app.promotions.service import CouponUnavailable, redeem_coupon
 from sqlalchemy import create_engine
 from app.promotions.service import validate_coupon
 from sqlalchemy.exc import IntegrityError
@@ -798,3 +799,500 @@ def test_validate_fixed_coupon_capped_at_subtotal(app):
         # Previewing must not consume the coupon.
         db.session.refresh(coupon)
         assert coupon.used_count == 0
+
+def test_redeem_coupon_respects_checkout_transaction(app):
+    """Redemption changes must roll back with checkout."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        user = User(
+            name="Redemption Test User",
+            email="redemption@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="REDEEM10",
+            assigned_email=None,
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now + timedelta(days=7),
+            active=True,
+            max_uses=1,
+            per_user_limit=1,
+            used_count=0,
+        )
+
+        db.session.add_all([user, coupon])
+        db.session.flush()
+
+        order = Order(
+            user_id=user.id,
+            idempotency_key="redemption-rollback-test",
+            subtotal=Decimal("100.00"),
+            discount=Decimal("10.00"),
+            total=Decimal("90.00"),
+        )
+
+        db.session.add(order)
+        db.session.commit()
+
+        # Checkout begins redeeming the coupon.
+        redeem_coupon(
+            coupon_id=coupon.id,
+            user_id=user.id,
+            order_id=order.id,
+        )
+
+        db.session.flush()
+        db.session.refresh(coupon)
+
+        assert coupon.used_count == 1
+
+        redemption_count = db.session.scalar(
+            select(func.count()).select_from(CouponRedemption)
+        )
+        assert redemption_count == 1
+
+        # Simulate a checkout failure.
+        db.session.rollback()
+        db.session.refresh(coupon)
+
+        assert coupon.used_count == 0
+
+        redemption_count = db.session.scalar(
+            select(func.count()).select_from(CouponRedemption)
+        )
+        assert redemption_count == 0
+
+def test_redeem_coupon_rejects_forwarded_code(app):
+    """A personal coupon cannot be redeemed by another account."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        owner = User(
+            name="Newsletter Coupon Owner",
+            email="coupon-owner@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        attacker = User(
+            name="Other Customer",
+            email="other-customer@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="NL-FORWARDED-TEST",
+            assigned_email="coupon-owner@example.com",
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now + timedelta(days=7),
+            active=True,
+            max_uses=1,
+            per_user_limit=1,
+            used_count=0,
+        )
+
+        db.session.add_all([owner, attacker, coupon])
+        db.session.flush()
+
+        # The order belongs to the other customer.
+        order = Order(
+            user_id=attacker.id,
+            idempotency_key="forwarded-coupon-order",
+            subtotal=Decimal("100.00"),
+            discount=Decimal("10.00"),
+            total=Decimal("90.00"),
+        )
+
+        db.session.add(order)
+        db.session.commit()
+
+        # Even with a valid order, coupon ownership must be checked.
+        with pytest.raises(CouponUnavailable):
+            redeem_coupon(
+                coupon_id=coupon.id,
+                user_id=attacker.id,
+                order_id=order.id,
+            )
+
+        db.session.rollback()
+        db.session.refresh(coupon)
+
+        # Rejection must not consume the coupon.
+        assert coupon.used_count == 0
+
+        redemption_count = db.session.scalar(
+            select(func.count()).select_from(CouponRedemption)
+        )
+
+        assert redemption_count == 0
+
+def test_redeem_coupon_rejects_global_limit(app):
+    """An exhausted coupon cannot be redeemed again."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        first_user = User(
+            name="First Customer",
+            email="first-limit@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        second_user = User(
+            name="Second Customer",
+            email="second-limit@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="GLOBALONCE",
+            assigned_email=None,
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now + timedelta(days=7),
+            active=True,
+            max_uses=1,
+            per_user_limit=1,
+            used_count=1,
+        )
+
+        db.session.add_all([first_user, second_user, coupon])
+        db.session.flush()
+
+        first_order = Order(
+            user_id=first_user.id,
+            idempotency_key="global-limit-first",
+        )
+
+        second_order = Order(
+            user_id=second_user.id,
+            idempotency_key="global-limit-second",
+        )
+
+        db.session.add_all([first_order, second_order])
+        db.session.flush()
+
+        # The first customer has already redeemed this coupon.
+        db.session.add(
+            CouponRedemption(
+                coupon_id=coupon.id,
+                user_id=first_user.id,
+                order_id=first_order.id,
+            )
+        )
+
+        db.session.commit()
+
+        # A second customer attempts another redemption.
+        with pytest.raises(CouponUnavailable):
+            redeem_coupon(
+                coupon_id=coupon.id,
+                user_id=second_user.id,
+                order_id=second_order.id,
+            )
+
+        # Checkout owns rollback after a rejected redemption.
+        db.session.rollback()
+        db.session.refresh(coupon)
+
+        assert coupon.used_count == 1
+
+        redemption_count = db.session.scalar(
+            select(func.count()).select_from(CouponRedemption)
+        )
+
+        assert redemption_count == 1
+
+def test_redeem_coupon_rejects_per_user_limit(app):
+    """A user cannot redeem a coupon beyond their personal limit."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        user = User(
+            name="Per-User Redemption Customer",
+            email="redeem-per-user@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="REDEEMPERUSER",
+            assigned_email=None,
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now + timedelta(days=7),
+            active=True,
+            max_uses=10,
+            per_user_limit=1,
+            used_count=1,
+        )
+
+        db.session.add_all([user, coupon])
+        db.session.flush()
+
+        first_order = Order(
+            user_id=user.id,
+            idempotency_key="per-user-redeem-first",
+        )
+
+        second_order = Order(
+            user_id=user.id,
+            idempotency_key="per-user-redeem-second",
+        )
+
+        db.session.add_all([first_order, second_order])
+        db.session.flush()
+
+        # The customer has already used this coupon once.
+        db.session.add(
+            CouponRedemption(
+                coupon_id=coupon.id,
+                user_id=user.id,
+                order_id=first_order.id,
+            )
+        )
+
+        db.session.commit()
+
+        # Attempt to redeem again on a different order.
+        with pytest.raises(CouponUnavailable):
+            redeem_coupon(
+                coupon_id=coupon.id,
+                user_id=user.id,
+                order_id=second_order.id,
+            )
+
+        # Checkout must roll back the failed redemption.
+        db.session.rollback()
+        db.session.refresh(coupon)
+
+        # The failed attempt must not consume another use.
+        assert coupon.used_count == 1
+
+        redemption_count = db.session.scalar(
+            select(func.count()).select_from(CouponRedemption)
+        )
+
+        assert redemption_count == 1
+
+def test_redeem_coupon_rejects_expired_coupon(app):
+    """Checkout must reject a coupon that has expired."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        user = User(
+            name="Expired Redemption User",
+            email="expired-redeem@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="EXPIREDREDEEM",
+            assigned_email=None,
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now - timedelta(minutes=1),
+            active=True,
+            max_uses=1,
+            per_user_limit=1,
+            used_count=0,
+        )
+
+        db.session.add_all([user, coupon])
+        db.session.flush()
+
+        order = Order(
+            user_id=user.id,
+            idempotency_key="expired-redemption-test",
+        )
+
+        db.session.add(order)
+        db.session.commit()
+
+        with pytest.raises(CouponUnavailable):
+            redeem_coupon(coupon.id, user.id, order.id)
+
+        db.session.rollback()
+        db.session.refresh(coupon)
+
+        assert coupon.used_count == 0
+        assert db.session.scalar(
+            select(func.count()).select_from(CouponRedemption)
+        ) == 0
+
+
+def test_redeem_coupon_rejects_another_users_order(app):
+    """A user cannot redeem a coupon on another user's order."""
+
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+
+        user = User(
+            name="Customer One",
+            email="order-owner-one@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        other_user = User(
+            name="Customer Two",
+            email="order-owner-two@example.com",
+            password_hash="test-only-unused-hash",
+            confirmed_at=now,
+        )
+
+        coupon = Coupon(
+            code="ORDEROWNERSHIP",
+            assigned_email=None,
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now + timedelta(days=7),
+            active=True,
+            max_uses=10,
+            per_user_limit=1,
+            used_count=0,
+        )
+
+        db.session.add_all([user, other_user, coupon])
+        db.session.flush()
+
+        order = Order(
+            user_id=other_user.id,
+            idempotency_key="order-ownership-test",
+        )
+
+        db.session.add(order)
+        db.session.commit()
+
+        # User One tries to redeem on User Two's order.
+        with pytest.raises(CouponUnavailable):
+            redeem_coupon(coupon.id, user.id, order.id)
+
+        db.session.rollback()
+        db.session.refresh(coupon)
+
+        assert coupon.used_count == 0
+        assert db.session.scalar(
+            select(func.count()).select_from(CouponRedemption)
+        ) == 0
+
+def test_concurrent_redemption_global_limit(tmp_path):
+    """Two simultaneous attempts cannot redeem a single-use coupon twice."""
+
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from app import create_app
+
+    db_file = tmp_path / "concurrent_redemption.db"
+
+    test_app = create_app({
+        "TESTING": True,
+        "SECRET_KEY": "temporary-concurrency-test-key",
+        "SQLALCHEMY_DATABASE_URI": f"sqlite:///{db_file.as_posix()}",
+        "SQLALCHEMY_ENGINE_OPTIONS": {
+            "connect_args": {"timeout": 30}
+        },
+    })
+
+    with test_app.app_context():
+        db.create_all()
+
+        now = datetime.now(timezone.utc)
+
+        users = [
+            User(
+                name=f"Concurrent User {i}",
+                email=f"concurrent-{i}@example.com",
+                password_hash="test-only-unused-hash",
+                confirmed_at=now,
+            )
+            for i in range(2)
+        ]
+
+        coupon = Coupon(
+            code="CONCURRENTONCE",
+            assigned_email=None,
+            kind="percent",
+            amount=Decimal("10.00"),
+            expires_at=now + timedelta(days=7),
+            active=True,
+            max_uses=1,
+            per_user_limit=1,
+            used_count=0,
+        )
+
+        db.session.add_all([*users, coupon])
+        db.session.flush()
+
+        orders = [
+            Order(
+                user_id=user.id,
+                idempotency_key=f"concurrent-order-{i}",
+            )
+            for i, user in enumerate(users)
+        ]
+
+        db.session.add_all(orders)
+        db.session.flush()
+
+        coupon_id = coupon.id
+        attempts = [
+            (user.id, order.id)
+            for user, order in zip(users, orders)
+        ]
+
+        db.session.commit()
+        db.session.remove()
+
+    barrier = Barrier(2)
+
+    def attempt_redemption(user_id, order_id):
+        with test_app.app_context():
+            try:
+                # Both workers begin their attempts together.
+                barrier.wait(timeout=10)
+
+                redeem_coupon(coupon_id, user_id, order_id)
+                db.session.commit()
+                return "success"
+
+            except CouponUnavailable:
+                db.session.rollback()
+                return "unavailable"
+
+            finally:
+                db.session.remove()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda pair: attempt_redemption(*pair),
+                attempts,
+            )
+        )
+
+    assert results.count("success") == 1
+    assert results.count("unavailable") == 1
+
+    with test_app.app_context():
+        saved_coupon = db.session.get(Coupon, coupon_id)
+
+        redemption_count = db.session.scalar(
+            select(func.count()).select_from(CouponRedemption)
+        )
+
+        assert saved_coupon.used_count == 1
+        assert redemption_count == 1

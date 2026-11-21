@@ -9,6 +9,8 @@ from decimal import Decimal
 from decimal import ROUND_HALF_UP
 from sqlalchemy import func
 from app.models.promotion import CouponRedemption
+from sqlalchemy import update, or_
+from app.models.order import Order
 
 from app.models.promotion import Coupon
 from .forms import normalize_email
@@ -33,6 +35,11 @@ class CouponResult:
     discount: Decimal
     reason: str
     coupon_id: int | None
+class CouponUnavailable(Exception):
+    """Raised when a coupon cannot be redeemed safely."""
+
+    pass
+
 
 
 def coupon_recipient_matches_user(coupon: Coupon, user: User | None) -> bool:
@@ -240,3 +247,91 @@ def validate_coupon(user_id, code, subtotal, now) -> CouponResult:
         reason="Coupon applied.",
         coupon_id=coupon.id,
     )
+
+def redeem_coupon(coupon_id, user_id, order_id) -> None:
+    """Redeem a coupon within checkout's existing transaction.
+
+    The checkout service owns commit and rollback.
+    """
+
+    error_message = "This coupon cannot be redeemed."
+
+    coupon = db.session.get(Coupon, coupon_id)
+    order = db.session.get(Order, order_id)
+
+    # The coupon and order must exist and be eligible.
+    if coupon is None or order is None or not coupon.active:
+        raise CouponUnavailable(error_message)
+
+    # Prevent redeeming against somebody else's order.
+    if order.user_id != user_id:
+        raise CouponUnavailable(error_message)
+
+    # Require a real, confirmed account and enforce email binding.
+    if not coupon_recipient_matches_user_id(coupon, user_id):
+        raise CouponUnavailable(error_message)
+
+    # Convert SQLite's timezone-naive UTC values for comparison.
+    expires_at = coupon.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if datetime.now(timezone.utc) >= expires_at:
+        raise CouponUnavailable(error_message)
+
+    # An order may contain only one coupon redemption.
+    existing_order_redemption = db.session.scalar(
+        select(CouponRedemption.id).where(
+            CouponRedemption.order_id == order_id
+        )
+    )
+
+    if existing_order_redemption is not None:
+        raise CouponUnavailable(error_message)
+
+    # Increment atomically, but only if the coupon is still
+    # active, unexpired, and below its global usage limit.
+    result = db.session.execute(
+        update(Coupon)
+        .where(
+            Coupon.id == coupon_id,
+            Coupon.active.is_(True),
+            Coupon.expires_at > datetime.now(timezone.utc),
+            or_(
+                Coupon.max_uses.is_(None),
+                Coupon.used_count < Coupon.max_uses,
+            ),
+        )
+        .values(
+            used_count=Coupon.used_count + 1
+        )
+        .execution_options(synchronize_session=False)
+    )
+
+    if result.rowcount != 1:
+        raise CouponUnavailable(error_message)
+
+    # Check the per-user limit after obtaining the write lock
+    # through the conditional UPDATE.
+    if coupon.per_user_limit is not None:
+        previous_uses = db.session.scalar(
+            select(func.count(CouponRedemption.id)).where(
+                CouponRedemption.coupon_id == coupon_id,
+                CouponRedemption.user_id == user_id,
+            )
+        )
+
+        if previous_uses >= coupon.per_user_limit:
+            raise CouponUnavailable(error_message)
+
+    # Record the redemption in the same transaction.
+    db.session.add(
+        CouponRedemption(
+            coupon_id=coupon_id,
+            user_id=user_id,
+            order_id=order_id,
+        )
+    )
+
+    # Execute the INSERT without committing.
+    db.session.flush()
