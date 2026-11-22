@@ -1,13 +1,25 @@
 """Catalog routes: product list and product detail (public, read-only)."""
+from decimal import InvalidOperation
+
 from flask import abort, render_template, request
 from sqlalchemy import select
 
 from app.extensions import db
 from app.models.product import Product
+from app.services.checkout_service import money
 
 from . import bp
 
 MAX_QUERY_LENGTH = 100
+
+
+@bp.app_template_filter("money")
+def money_filter(value):
+    # Show a price as an exact two-decimal string (Decimal, never float formatting).
+    try:
+        return f"{money(value):.2f}"
+    except (InvalidOperation, TypeError, ValueError):
+        return "0.00"
 
 
 def _escape_like(text):

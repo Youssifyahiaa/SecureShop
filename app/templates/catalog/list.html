@@ -22,7 +22,7 @@
         {% for product in products %}
           <article class="feature-card">
             <h3><a href="{{ url_for('catalog.detail', product_id=product.id) }}">{{ product.name }}</a></h3>
-            <p>{{ "%.2f"|format(product.price) }} EGP</p>
+            <p>{{ product.price|money }} EGP</p>
             {% if product.stock > 0 %}
               <p class="form-help">In stock</p>
             {% else %}
