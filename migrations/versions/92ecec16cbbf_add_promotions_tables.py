@@ -1,7 +1,7 @@
 """add promotions tables
 
 Revision ID: 92ecec16cbbf
-Revises: 0f270982d8f6
+Revises: 25afbcaf1520
 Create Date: 2026-11-19 16:38:38.805955
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '92ecec16cbbf'
-down_revision = '0f270982d8f6'
+down_revision = '25afbcaf1520'
 branch_labels = None
 depends_on = None
 
