@@ -1,5 +1,4 @@
 """Task 4: password reset, session invalidation, role safety, safe redirects, cart on login."""
-import logging
 import re
 from datetime import datetime
 
@@ -37,11 +36,11 @@ def is_logged_in(client):
     return b"Log out" in client.get("/").data
 
 
-def request_reset_link(client, caplog, email="alice@example.com"):
-    """POST /reset-password and return the reset path written to the dev mail log."""
-    caplog.clear()
+def request_reset_link(client, outbox, email="alice@example.com"):
+    """POST /reset-password and return the reset path put in the dev outbox."""
+    outbox.clear()
     client.post("/reset-password", data={"email": email})
-    match = re.search(r"(/reset-password/\S+)", " ".join(caplog.messages))
+    match = re.search(r"(/reset-password/\S+)", " ".join(m["body"] for m in outbox))
     return match.group(1) if match else None
 
 
@@ -60,9 +59,9 @@ def get_in_fresh_context(app, client, path):
 
 
 @pytest.fixture
-def mail_log(caplog):
-    caplog.set_level(logging.INFO)
-    return caplog
+def outbox(app):
+    """The in-memory development outbox that send_email fills under TESTING."""
+    return app.extensions.setdefault("dev_outbox", [])
 
 
 @pytest.fixture
@@ -80,7 +79,7 @@ def app_with_protected(app):
 
 
 # ---------------------------------------------------------------- reset request
-def test_reset_request_existing_and_unknown_email_identical(app, mail_log):
+def test_reset_request_existing_and_unknown_email_identical(app, outbox):
     make_user()
     c1, c2 = app.test_client(), app.test_client()
     r1 = c1.post("/reset-password", data={"email": "alice@example.com"})
@@ -89,9 +88,9 @@ def test_reset_request_existing_and_unknown_email_identical(app, mail_log):
     assert r1.headers["Location"] == r2.headers["Location"]
     p1, p2 = c1.get(r1.headers["Location"]).data, c2.get(r2.headers["Location"]).data
     assert p1 == p2 and RESET_SENT in p1
-    # Only the real account got a link (in the server log, never on the page).
-    links = [m for m in mail_log.messages if "/reset-password/" in m]
-    assert len(links) == 1 and "alice@example.com" in links[0]
+    # Only the real account got a link (in the dev outbox, never on the page).
+    links = [m for m in outbox if "/reset-password/" in m["body"]]
+    assert len(links) == 1 and links[0]["to"] == "alice@example.com"
     assert b"/reset-password/" not in p1
 
 
@@ -101,9 +100,9 @@ def test_reset_request_page_and_login_link(client):
 
 
 # ---------------------------------------------------------------- reset password
-def test_valid_reset_link_changes_password(app, client, mail_log):
+def test_valid_reset_link_changes_password(app, client, outbox):
     make_user()
-    path = request_reset_link(client, mail_log)
+    path = request_reset_link(client, outbox)
     assert client.get(path).status_code == 200
     r = set_new_password(client, path)
     assert r.status_code == 302 and r.headers["Location"] == "/login"
@@ -114,9 +113,9 @@ def test_valid_reset_link_changes_password(app, client, mail_log):
     assert login(app.test_client(), password=NEW).status_code == 302
 
 
-def test_reset_link_single_use(client, mail_log):
+def test_reset_link_single_use(client, outbox):
     make_user()
-    path = request_reset_link(client, mail_log)
+    path = request_reset_link(client, outbox)
     assert set_new_password(client, path).status_code == 302
     r = set_new_password(client, path, password="another-long-passphrase-x")
     assert r.status_code == 400 and RESET_INVALID in r.data
@@ -124,10 +123,10 @@ def test_reset_link_single_use(client, mail_log):
     assert db.session.query(User).one().check_password(NEW)
 
 
-def test_second_reset_request_invalidates_first_link(client, mail_log):
+def test_second_reset_request_invalidates_first_link(client, outbox):
     make_user()
-    first = request_reset_link(client, mail_log)
-    second = request_reset_link(client, mail_log)
+    first = request_reset_link(client, outbox)
+    second = request_reset_link(client, outbox)
     assert first != second
     r = set_new_password(client, first)
     assert r.status_code == 400 and RESET_INVALID in r.data
@@ -135,18 +134,18 @@ def test_second_reset_request_invalidates_first_link(client, mail_log):
     assert set_new_password(client, second).status_code == 302
 
 
-def test_expired_reset_token_rejected(app, client, mail_log):
+def test_expired_reset_token_rejected(app, client, outbox):
     make_user()
-    path = request_reset_link(client, mail_log)
+    path = request_reset_link(client, outbox)
     app.config["RESET_TOKEN_MAX_AGE"] = -1  # every token is already older than this
     r = set_new_password(client, path)
     assert r.status_code == 400 and RESET_INVALID in r.data
     assert db.session.query(User).one().check_password(GOOD)
 
 
-def test_tampered_reset_token_rejected(client, mail_log):
+def test_tampered_reset_token_rejected(client, outbox):
     make_user()
-    path = request_reset_link(client, mail_log)
+    path = request_reset_link(client, outbox)
     bad = path[:-2] + ("AA" if path[-2:] != "AA" else "BB")
     r = set_new_password(client, bad)
     assert r.status_code == 400 and RESET_INVALID in r.data and b"Traceback" not in r.data
@@ -154,17 +153,17 @@ def test_tampered_reset_token_rejected(client, mail_log):
     assert db.session.query(User).one().check_password(GOOD)
 
 
-def test_confirmation_token_cannot_be_used_for_reset(client, mail_log):
+def test_confirmation_token_cannot_be_used_for_reset(client, outbox):
     u = make_user()
-    request_reset_link(client, mail_log)  # the user has a live nonce
+    request_reset_link(client, outbox)  # the user has a live nonce
     r = set_new_password(client, f"/reset-password/{make_confirm_token(u.id)}")
     assert r.status_code == 400 and RESET_INVALID in r.data
     assert db.session.get(User, u.id).check_password(GOOD)
 
 
-def test_reset_token_with_wrong_nonce_or_unknown_user_rejected(client, mail_log):
+def test_reset_token_with_wrong_nonce_or_unknown_user_rejected(client, outbox):
     u = make_user()
-    request_reset_link(client, mail_log)
+    request_reset_link(client, outbox)
     for token in (make_reset_token(u.id, "guessed-nonce"), make_reset_token(999, u.reset_nonce)):
         r = set_new_password(client, f"/reset-password/{token}")
         assert r.status_code == 400 and RESET_INVALID in r.data
@@ -172,36 +171,36 @@ def test_reset_token_with_wrong_nonce_or_unknown_user_rejected(client, mail_log)
 
 
 @pytest.mark.parametrize("weak", ["Password1234", "short-pw", "x" * 129])
-def test_weak_or_common_new_password_rejected(client, mail_log, weak):
+def test_weak_or_common_new_password_rejected(client, outbox, weak):
     make_user()
-    path = request_reset_link(client, mail_log)
+    path = request_reset_link(client, outbox)
     r = set_new_password(client, path, password=weak)
     assert r.status_code == 200
     u = db.session.query(User).one()
     assert u.check_password(GOOD) and u.reset_nonce is not None and u.session_version == 0
 
 
-def test_mismatched_reset_confirmation_rejected(client, mail_log):
+def test_mismatched_reset_confirmation_rejected(client, outbox):
     make_user()
-    path = request_reset_link(client, mail_log)
+    path = request_reset_link(client, outbox)
     r = set_new_password(client, path, confirm=NEW + "x")
     assert r.status_code == 200 and b"Passwords must match." in r.data
     assert db.session.query(User).one().check_password(GOOD)
 
 
-def test_reset_page_sends_no_referrer(client, mail_log):
+def test_reset_page_sends_no_referrer(client, outbox):
     make_user()
-    path = request_reset_link(client, mail_log)
+    path = request_reset_link(client, outbox)
     assert client.get(path).headers["Referrer-Policy"] == "no-referrer"
 
 
 # ---------------------------------------------------------------- session versioning
-def test_password_reset_kills_existing_session(app_with_protected, mail_log):
+def test_password_reset_kills_existing_session(app_with_protected, outbox):
     make_user()
     client_a, client_b = app_with_protected.test_client(), app_with_protected.test_client()
     login(client_a)
     assert client_a.get("/_t4_protected").data == b"secret"
-    path = request_reset_link(client_b, mail_log)
+    path = request_reset_link(client_b, outbox)
     assert set_new_password(client_b, path).status_code == 302
     r = get_in_fresh_context(app_with_protected, client_a, "/_t4_protected")
     assert r.status_code == 302 and "/login" in r.headers["Location"]
@@ -249,9 +248,9 @@ def test_extra_role_fields_on_register_and_login_change_nothing(client):
         assert not {"role", "is_admin"} & set(s.keys())
 
 
-def test_extra_role_fields_on_reset_change_nothing(client, mail_log):
+def test_extra_role_fields_on_reset_change_nothing(client, outbox):
     make_user()
-    path = request_reset_link(client, mail_log)
+    path = request_reset_link(client, outbox)
     client.post(path, data={"password": NEW, "confirm_password": NEW, "role": "admin", "is_admin": "1",
                             "session_version": "0", "reset_nonce": "keep"})
     u = db.session.query(User).one()

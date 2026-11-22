@@ -55,7 +55,7 @@ class Config:
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
     MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER", "no-reply@secureshop.local")
-    # When no mail server is configured, links go to the development log only.
+    # When no mail server is configured, mail goes to the private dev outbox (instance/dev_mail/).
     MAIL_DEV_LOG_ONLY = not MAIL_SERVER
 
 

@@ -156,19 +156,66 @@ def test_unconfirmed_message_not_shown_for_wrong_password(client):
     assert b"confirm your email" not in r.data
 
 
-def test_registration_logs_link_but_page_does_not(client, caplog):
-    caplog.set_level(logging.INFO)
+def test_registration_puts_link_in_outbox_but_page_does_not(app, client):
     r = client.post("/register", data=reg_data(), follow_redirects=True)
     assert b"/confirm/" not in r.data
     assert "delivered" not in r.get_data(as_text=True).lower()
-    logged = [m for m in caplog.messages if m.startswith("[DEV MAIL]")]
-    assert len(logged) == 1 and "/confirm/" in logged[0]
+    outbox = app.extensions["dev_outbox"]
+    assert len(outbox) == 1 and "/confirm/" in outbox[0]["body"]
 
 
-def test_valid_token_confirms_account(client, caplog):
-    caplog.set_level(logging.INFO)
+def test_dev_mail_body_never_logged(app, client, caplog):
+    caplog.set_level(logging.DEBUG)
     client.post("/register", data=reg_data())
-    path = re.search(r"(/confirm/\S+)", " ".join(caplog.messages)).group(1)
+    msg = app.extensions["dev_outbox"][0]
+    path = re.search(r"(/confirm/\S+)", msg["body"]).group(1)
+    token = path.rsplit("/", 1)[-1]
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert msg["body"] not in logged
+    assert path not in logged and token not in logged
+    dev = [m for m in caplog.messages if m.startswith("[DEV MAIL]")]
+    assert len(dev) == 1 and msg["to"] not in dev[0]
+
+
+def test_outbox_gets_the_message(app):
+    from app.auth.email import send_email
+
+    with app.test_request_context():
+        assert send_email("jane@example.com", "Hi", "secret body 123456") is False
+    assert app.extensions["dev_outbox"] == [
+        {"to": "jane@example.com", "subject": "Hi", "body": "secret body 123456"}
+    ]
+
+
+def test_dev_mail_log_line_is_masked(app, caplog):
+    from app.auth.email import send_email
+
+    caplog.set_level(logging.INFO)
+    with app.test_request_context():
+        send_email("jane@example.com", "Hi", "secret body 123456")
+    assert caplog.messages == ["[DEV MAIL] saved for j***@example.com"]
+
+
+def test_dev_mail_written_to_instance_folder_outside_testing(app, tmp_path, caplog):
+    from app.auth.email import send_email
+
+    caplog.set_level(logging.INFO)
+    app.config["TESTING"] = False
+    app.instance_path = str(tmp_path)
+    with app.test_request_context():
+        send_email("jane@example.com", "Hi", "secret body 123456")
+        send_email("jane@example.com", "Hi again", "second body")
+    files = sorted((tmp_path / "dev_mail").glob("*.txt"))
+    assert len(files) == 2 and files[0].name != files[1].name
+    texts = [f.read_text(encoding="utf-8") for f in files]
+    assert any("secret body 123456" in t for t in texts)
+    assert "dev_outbox" not in app.extensions
+    assert all("secret body" not in m for m in caplog.messages)
+
+
+def test_valid_token_confirms_account(app, client):
+    client.post("/register", data=reg_data())
+    path = re.search(r"(/confirm/\S+)", app.extensions["dev_outbox"][0]["body"]).group(1)
     r = client.get(path)
     assert r.status_code == 200
     assert db.session.query(User).one().is_confirmed
