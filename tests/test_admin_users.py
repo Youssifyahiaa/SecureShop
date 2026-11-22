@@ -391,3 +391,29 @@ def test_role_change_requires_csrf(app, client):
     assert response.status_code == 400
 
     assert db.session.get(User, customer.id).role == "customer"
+
+def test_admin_user_search_escapes_xss(app, client):
+    register_login_route(app)
+
+    admin = create_user(
+        "Security Admin",
+        "xss-admin@test.com",
+        role="admin"
+    )
+
+    login_as(client, admin)
+
+    malicious_search = "<script>alert(1)</script>"
+
+    response = client.get(
+        "/admin/users",
+        query_string={"q": malicious_search}
+    )
+
+    assert response.status_code == 200
+
+    # Search input must display escaped text.
+    assert b"&lt;script&gt;alert(1)&lt;/script&gt;" in response.data
+
+    # Raw executable HTML must never appear.
+    assert b"<script>alert(1)</script>" not in response.data

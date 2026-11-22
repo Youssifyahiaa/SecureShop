@@ -244,3 +244,31 @@ def test_audit_logs_pagination_and_order(app, client):
     assert b"Page 2 of 2" in response.data
     assert b"event_25" in response.data
     assert b"event_0" not in response.data
+
+def test_audit_log_details_escape_xss(app, client):
+    register_login_route(app)
+
+    admin = create_user(
+        "Audit Admin",
+        "xss-audit@test.com",
+        role="admin"
+    )
+
+    malicious_details = "<script>alert(1)</script>"
+
+    create_audit_log(
+        event_type="security_test",
+        details=malicious_details
+    )
+
+    login_as(client, admin)
+
+    response = client.get("/admin/audit-logs")
+
+    assert response.status_code == 200
+
+    # Audit details must be rendered as harmless text.
+    assert b"&lt;script&gt;alert(1)&lt;/script&gt;" in response.data
+
+    # No raw executable script should be present.
+    assert b"<script>alert(1)</script>" not in response.data

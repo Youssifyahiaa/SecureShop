@@ -292,3 +292,39 @@ def test_profile_update_creates_audit_event(app, client):
     assert event is not None
     assert event.actor_id is None
     assert event.details == '{"changed_fields":["name"]}'
+
+
+def test_profile_rejects_xss_execution(app, client):
+    register_login_route(app)
+
+    malicious_name = "<script>alert(1)</script>"
+
+    customer = create_user(
+        "Original Name",
+        "xss-profile@test.com"
+    )
+
+    login_as(client, customer)
+
+    response = client.post(
+        "/account/profile",
+        data={"name": malicious_name},
+        follow_redirects=True
+    )
+
+    assert response.status_code == 200
+
+    # The name is stored as submitted, not interpreted as HTML.
+    updated_user = db.session.get(User, customer.id)
+    assert updated_user.name == malicious_name
+
+    # The browser receives escaped HTML.
+    assert b"&lt;script&gt;alert(1)&lt;/script&gt;" in response.data
+    assert b"<script>alert(1)</script>" not in response.data
+
+    # Verify the account dashboard also escapes the name.
+    dashboard = client.get("/account/")
+
+    assert dashboard.status_code == 200
+    assert b"&lt;script&gt;alert(1)&lt;/script&gt;" in dashboard.data
+    assert b"<script>alert(1)</script>" not in dashboard.data
