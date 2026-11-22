@@ -1,4 +1,4 @@
-"""Order and store-credit ledger models. All money values are Decimal (Numeric(10, 2))."""
+"""Order, order item and store-credit ledger models. All money values are Decimal (Numeric(10, 2))."""
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -32,6 +32,26 @@ class Order(db.Model):
     idempotency_key = db.Column(db.String(64), nullable=False)
 
     user = db.relationship("User", backref=db.backref("orders", lazy=True))
+    items = db.relationship("OrderItem", back_populates="order", lazy=True, cascade="all, delete-orphan")
+
+
+class OrderItem(db.Model):
+    """One line of an order. unit_price_snapshot is the DB price at checkout time, never client input."""
+
+    __tablename__ = "order_items"
+    __table_args__ = (
+        db.CheckConstraint("quantity > 0", name="ck_order_items_quantity_pos"),
+        db.CheckConstraint("unit_price_snapshot >= 0", name="ck_order_items_unit_price_nonneg"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False, index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    unit_price_snapshot = db.Column(MONEY, nullable=False)
+
+    order = db.relationship("Order", back_populates="items")
+    product = db.relationship("Product")
 
 
 class CreditLedger(db.Model):

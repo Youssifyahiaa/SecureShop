@@ -1,5 +1,4 @@
 import hmac
-import re
 import secrets
 import hashlib
 from datetime import datetime, timezone
@@ -11,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db, limiter
 from app.models.user import User
+from app.services.cart_session import CART_MAX_ENTRIES, CART_MAX_QTY, sanitize_cart  # noqa: F401
 
 from . import bp
 from .email import send_confirmation_email, send_password_reset_email
@@ -26,9 +26,8 @@ _RESET_INVALID = "This password reset link is invalid or has expired. Please req
 _RESET_DONE = "Your password has been changed. Please log in with your new password."
 
 # Guest cart kept across login (agreed with the cart owner): {"<product id>": quantity}.
-CART_MAX_ENTRIES = 50
-CART_MAX_QTY = 99
-_PRODUCT_ID = re.compile(r"[0-9]{1,10}")  # ASCII digits only (str.isdigit() also accepts e.g. "²")
+# The sanitizer lives in app.services.cart_session so checkout uses the exact same rules.
+_sanitize_cart = sanitize_cart
 
 
 def _safe_next(target):
@@ -44,22 +43,6 @@ def _safe_next(target):
 def redirect_to_next(default_endpoint="main.home"):
     """The single place auth follows a user-supplied ?next= target (open-redirect safe)."""
     return redirect(_safe_next(request.args.get("next")) or url_for(default_endpoint))
-
-
-def _sanitize_cart(raw):
-    """Return a clean copy of a guest cart; anything unexpected is dropped."""
-    if not isinstance(raw, dict):
-        return {}
-    clean = {}
-    for key, qty in raw.items():
-        if len(clean) >= CART_MAX_ENTRIES:
-            break
-        if not isinstance(key, str) or not _PRODUCT_ID.fullmatch(key):
-            continue
-        if type(qty) is not int or not 1 <= qty <= CART_MAX_QTY:  # rejects bool, float, str
-            continue
-        clean[key] = qty
-    return clean
 
 
 @bp.route("/register", methods=["GET", "POST"])
