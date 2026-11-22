@@ -28,3 +28,12 @@ class NewsletterForm(FlaskForm):
             Email(),
         ],
     )
+
+class NewsletterConfirmForm(FlaskForm):
+    """CSRF-protected confirmation form.
+
+    No additional fields are required because the
+    signed token identifies the email address.
+    """
+
+    pass

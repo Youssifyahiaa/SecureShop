@@ -54,16 +54,43 @@ def upgrade():
 
 
 
-    op.create_table('newsletter_subscribers',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('email', sa.String(length=255), nullable=False),
-    sa.Column('subscribed_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('coupon_id', sa.Integer(), nullable=False),
-    sa.CheckConstraint('length(trim(email)) > 0', name='ck_newsletter_email_not_blank'),
-    sa.ForeignKeyConstraint(['coupon_id'], ['coupons.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('coupon_id')
+
+    op.create_table(
+        'newsletter_subscribers',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('email', sa.String(length=255), nullable=False),
+        sa.Column('subscribed_at', sa.DateTime(timezone=True), nullable=False),
+        sa.Column('coupon_id', sa.Integer(), nullable=False),
+        sa.Column(
+            'coupon_email_status',
+            sa.String(length=20),
+            server_default='pending',
+            nullable=False,
+        ),
+        sa.Column(
+            'coupon_email_attempts',
+            sa.Integer(),
+            server_default='0',
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            'length(trim(email)) > 0',
+            name='ck_newsletter_email_not_blank',
+        ),
+        sa.CheckConstraint(
+            "coupon_email_status IN "
+            "('pending', 'smtp_accepted', 'dev_saved', 'failed')",
+            name='ck_newsletter_coupon_email_status',
+        ),
+        sa.CheckConstraint(
+            'coupon_email_attempts >= 0',
+            name='ck_newsletter_coupon_email_attempts',
+        ),
+        sa.ForeignKeyConstraint(['coupon_id'], ['coupons.id']),
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('coupon_id'),
     )
+
     with op.batch_alter_table('newsletter_subscribers', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_newsletter_subscribers_email'), ['email'], unique=True)
 

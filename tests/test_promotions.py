@@ -1298,38 +1298,107 @@ def test_concurrent_redemption_global_limit(tmp_path):
         assert redemption_count == 1
 
 
-def test_newsletter_post_creates_coupon_and_private_email(app, caplog):
-    """Checkpoint the current POST flow before double opt-in replaces it."""
-    app.config.update(WTF_CSRF_ENABLED=False, MAIL_DEV_LOG_ONLY=True)
-    client = app.test_client()
-    response = client.post(
-        "/newsletter/subscribe", data={"email": "  Welcome-Test@Example.com  "}
-    )
-    assert response.status_code == 302
+
+def test_newsletter_double_opt_in_workflow(app):
+    """Only confirmed newsletter subscribers receive coupons."""
+
+    from urllib.parse import urlsplit
+
     with app.app_context():
-        subscriber = db.session.scalar(select(NewsletterSubscriber).where(
-            NewsletterSubscriber.email == "welcome-test@example.com"
-        ))
-        assert subscriber is not None
-        coupon = db.session.get(Coupon, subscriber.coupon_id)
-        assert coupon.assigned_email == "welcome-test@example.com"
-        assert coupon.kind == "percent"
-        assert coupon.amount == Decimal("10.00")
-        assert coupon.max_uses == coupon.per_user_limit == 1
-        expiry = coupon.expires_at.replace(tzinfo=timezone.utc)
-        assert timedelta(days=6, hours=23) < expiry - datetime.now(timezone.utc) <= timedelta(days=7)
+        app.config["WTF_CSRF_ENABLED"] = False
+        app.config["MAIL_DEV_LOG_ONLY"] = True
+        app.extensions["dev_outbox"] = []
+
+        client = app.test_client()
+
+        # Step 1: Customer requests a subscription.
+        signup_response = client.post(
+            "/newsletter/subscribe",
+            data={"email": "  Welcome-Test@Example.com  "},
+        )
+
+        assert signup_response.status_code == 302
+
         outbox = app.extensions["dev_outbox"]
+
+        # Only a confirmation email should exist.
         assert len(outbox) == 1
-        assert outbox[0]["to"] == subscriber.email
-        assert coupon.code in outbox[0]["body"]
-        public = client.get(response.headers["Location"]).get_data(as_text=True)
-        assert coupon.code not in public
-        assert coupon.code not in caplog.text
-        repeated = client.post("/newsletter/subscribe", data={"email": subscriber.email})
-        assert repeated.status_code == 302
+        assert outbox[0]["to"] == "welcome-test@example.com"
+
+        # Nothing is issued before confirmation.
+        assert db.session.scalar(
+            select(func.count()).select_from(NewsletterSubscriber)
+        ) == 0
+
+        assert db.session.scalar(
+            select(func.count()).select_from(Coupon)
+        ) == 0
+
+        # Extract the confirmation link from the private email.
+        confirmation_url = next(
+            line.removeprefix("Confirmation link: ").strip()
+            for line in outbox[0]["body"].splitlines()
+            if line.startswith("Confirmation link: ")
+        )
+
+        confirmation_path = urlsplit(confirmation_url).path
+
+        # Step 2: Opening the link must not register anyone.
+        preview_response = client.get(confirmation_path)
+
+        assert preview_response.status_code == 200
+
+        assert db.session.scalar(
+            select(func.count()).select_from(NewsletterSubscriber)
+        ) == 0
+
         assert len(outbox) == 1
-        assert db.session.scalar(select(func.count()).select_from(NewsletterSubscriber)) == 1
-        assert db.session.scalar(select(func.count()).select_from(Coupon)) == 1
+
+        # Step 3: Customer explicitly confirms.
+        confirm_response = client.post(confirmation_path)
+
+        assert confirm_response.status_code == 302
+
+        subscriber = db.session.scalar(
+            select(NewsletterSubscriber).where(
+                NewsletterSubscriber.email == "welcome-test@example.com"
+            )
+        )
+
+        assert subscriber is not None
+
+        coupon = db.session.get(Coupon, subscriber.coupon_id)
+
+        assert coupon is not None
+        assert coupon.assigned_email == "welcome-test@example.com"
+        assert coupon.amount == Decimal("10.00")
+        assert coupon.max_uses == 1
+        assert coupon.per_user_limit == 1
+
+        # Step 4: Only now is the coupon emailed.
+        assert len(outbox) == 2
+        assert outbox[1]["to"] == "welcome-test@example.com"
+        assert coupon.code in outbox[1]["body"]
+
+        # No coupon code is exposed in either HTTP response.
+        assert coupon.code.encode() not in signup_response.data
+        assert coupon.code.encode() not in confirm_response.data
+
+        # Step 5: Reusing the confirmation link
+        # must not generate another coupon or email.
+        repeat_response = client.post(confirmation_path)
+
+        assert repeat_response.status_code == 302
+        assert len(outbox) == 2
+
+        assert db.session.scalar(
+            select(func.count()).select_from(Coupon)
+        ) == 1
+
+        assert db.session.scalar(
+            select(func.count()).select_from(NewsletterSubscriber)
+        ) == 1
+
 
 
 def test_newsletter_post_requires_csrf(app):
@@ -1341,3 +1410,303 @@ def test_newsletter_post_requires_csrf(app):
     with app.app_context():
         assert db.session.scalar(select(func.count()).select_from(NewsletterSubscriber)) == 0
         assert not app.extensions.get("dev_outbox")
+
+def test_newsletter_confirmation_token_is_secure(app):
+    """Newsletter confirmation tokens are signed and purpose-specific."""
+
+    from app.promotions.tokens import (
+        make_newsletter_confirm_token,
+        read_newsletter_confirm_token,
+    )
+    from app.auth.tokens import make_confirm_token
+
+    with app.app_context():
+        token = make_newsletter_confirm_token(
+            "  Newsletter-Test@Example.com  "
+        )
+
+        assert read_newsletter_confirm_token(
+            token
+        ) == "newsletter-test@example.com"
+
+        # Modified tokens must be rejected.
+        assert read_newsletter_confirm_token(
+            token + "invalid"
+        ) is None
+
+        # Account confirmation tokens cannot confirm newsletters.
+        account_token = make_confirm_token(1)
+
+        assert read_newsletter_confirm_token(
+            account_token
+        ) is None
+
+def test_newsletter_requires_email_confirmation(app):
+    """Signing up must not issue a coupon before email confirmation."""
+
+    with app.app_context():
+        app.config["WTF_CSRF_ENABLED"] = False
+        app.config["MAIL_DEV_LOG_ONLY"] = True
+        app.extensions["dev_outbox"] = []
+
+        client = app.test_client()
+
+        response = client.post(
+            "/newsletter/subscribe",
+            data={"email": "double-opt-in@example.com"},
+        )
+
+        assert response.status_code == 302
+
+        # Before confirmation, no subscriber or coupon exists.
+        subscriber_count = db.session.scalar(
+            select(func.count()).select_from(NewsletterSubscriber)
+        )
+
+        coupon_count = db.session.scalar(
+            select(func.count()).select_from(Coupon)
+        )
+
+        assert subscriber_count == 0
+        assert coupon_count == 0
+
+        # The first email must contain a confirmation link,
+        # NOT the personal discount coupon.
+        outbox = app.extensions["dev_outbox"]
+
+        assert len(outbox) == 1
+        assert outbox[0]["to"] == "double-opt-in@example.com"
+        assert "confirm" in outbox[0]["body"].lower()
+        assert "NL-" not in outbox[0]["body"]
+
+def test_newsletter_confirmation_requires_csrf(app):
+    """A confirmation POST without CSRF must be rejected."""
+
+    from app.promotions.tokens import make_newsletter_confirm_token
+
+    with app.app_context():
+        # Enable CSRF explicitly for this security test.
+        app.config["WTF_CSRF_ENABLED"] = True
+        app.config["MAIL_DEV_LOG_ONLY"] = True
+        app.extensions["dev_outbox"] = []
+
+        token = make_newsletter_confirm_token(
+            "csrf-test@example.com"
+        )
+
+        client = app.test_client()
+
+        # Attempt confirmation without a CSRF token.
+        response = client.post(
+            f"/newsletter/confirm/{token}"
+        )
+
+        assert response.status_code == 400
+
+        # No subscriber or coupon should have been created.
+        assert db.session.scalar(
+            select(func.count()).select_from(NewsletterSubscriber)
+        ) == 0
+
+        assert db.session.scalar(
+            select(func.count()).select_from(Coupon)
+        ) == 0
+
+        # No coupon email should have been sent.
+        assert len(app.extensions["dev_outbox"]) == 0
+
+def test_newsletter_expired_confirmation_link_rejected(app):
+    """An expired confirmation link must not create a subscription."""
+
+    from unittest.mock import patch
+
+    from app.promotions.tokens import (
+        make_newsletter_confirm_token,
+        read_newsletter_confirm_token,
+    )
+
+    with app.app_context():
+        app.config["NEWSLETTER_CONFIRM_TOKEN_MAX_AGE"] = 60
+
+        issued_at = 1800000000
+
+        # Generate the token at a fixed point in time.
+        with patch(
+            "itsdangerous.timed.time.time",
+            return_value=issued_at,
+        ):
+            token = make_newsletter_confirm_token(
+                "expired-newsletter@example.com"
+            )
+
+        # Simulate 61 seconds passing.
+        with patch(
+            "itsdangerous.timed.time.time",
+            return_value=issued_at + 61,
+        ):
+            assert read_newsletter_confirm_token(token) is None
+
+            client = app.test_client()
+
+            response = client.get(
+                f"/newsletter/confirm/{token}"
+            )
+
+            assert response.status_code == 400
+
+        # Expired links must never issue a coupon.
+        assert db.session.scalar(
+            select(func.count()).select_from(NewsletterSubscriber)
+        ) == 0
+
+        assert db.session.scalar(
+            select(func.count()).select_from(Coupon)
+        ) == 0
+
+
+def test_newsletter_subscription_rate_limit():
+    """Allow three signup POSTs per IP, then reject the fourth."""
+
+    from app import create_app
+    from app.config import TEST_CONFIG
+
+    # Create a separate test app with rate limiting enabled.
+    # Do not modify the shared TEST_CONFIG.
+    test_config = {
+        **TEST_CONFIG,
+        "RATELIMIT_ENABLED": True,
+        "RATELIMIT_STORAGE_URI": "memory://",
+        "MAIL_DEV_LOG_ONLY": True,
+    }
+
+    test_app = create_app(test_config)
+
+    with test_app.app_context():
+        db.create_all()
+
+        try:
+            test_app.extensions["dev_outbox"] = []
+            client = test_app.test_client()
+
+            # The first three POST requests should succeed.
+            for i in range(3):
+                response = client.post(
+                    "/newsletter/subscribe",
+                    data={
+                        "email": f"rate-limit-{i}@example.com"
+                    },
+                    environ_base={
+                        "REMOTE_ADDR": "192.0.2.100"
+                    },
+                )
+
+                assert response.status_code == 302
+
+            assert len(test_app.extensions["dev_outbox"]) == 3
+
+            # The fourth request from the same IP must be blocked.
+            blocked_response = client.post(
+                "/newsletter/subscribe",
+                data={
+                    "email": "rate-limit-4@example.com"
+                },
+                environ_base={
+                    "REMOTE_ADDR": "192.0.2.100"
+                },
+            )
+
+            assert blocked_response.status_code == 429
+
+            # No fourth confirmation email should be generated.
+            assert len(test_app.extensions["dev_outbox"]) == 3
+
+            # No coupon or subscriber exists before confirmation.
+            assert db.session.scalar(
+                select(func.count()).select_from(Coupon)
+            ) == 0
+
+            assert db.session.scalar(
+                select(func.count()).select_from(NewsletterSubscriber)
+            ) == 0
+
+            # GET requests should remain accessible.
+            get_response = client.get(
+                "/newsletter/subscribe",
+                environ_base={
+                    "REMOTE_ADDR": "192.0.2.100"
+                },
+            )
+
+            assert get_response.status_code == 200
+
+        finally:
+            db.session.remove()
+            db.drop_all()
+
+def test_newsletter_retries_failed_coupon_delivery(app):
+    """A failed email must be recoverable without a duplicate coupon."""
+
+    from unittest.mock import patch
+    from app.promotions.tokens import make_newsletter_confirm_token
+
+
+    with app.app_context():
+        app.config["WTF_CSRF_ENABLED"] = False
+
+        # Simulate production SMTP configuration.
+        # send_email is mocked below, so no real email is sent.
+        app.config["MAIL_DEV_LOG_ONLY"] = False
+        app.config["MAIL_SERVER"] = "smtp.example.test"
+
+
+        email = "delivery-retry@example.com"
+        token = make_newsletter_confirm_token(email)
+        confirmation_path = f"/newsletter/confirm/{token}"
+
+        client = app.test_client()
+
+        # Simulate the first email attempt failing,
+        # followed by a successful retry.
+        with patch(
+            "app.promotions.routes.send_email",
+            side_effect=[False, True],
+        ) as mocked_send:
+
+            first_response = client.post(confirmation_path)
+
+            assert first_response.status_code == 302
+
+            subscriber = db.session.scalar(
+                select(NewsletterSubscriber).where(
+                    NewsletterSubscriber.email == email
+                )
+            )
+
+            assert subscriber is not None
+
+            original_coupon = db.session.get(
+                Coupon, subscriber.coupon_id
+            )
+
+            original_code = original_coupon.code
+
+            # Customer retries confirmation after the email failure.
+            second_response = client.post(confirmation_path)
+
+            assert second_response.status_code == 302
+
+            # The original coupon should be emailed again.
+            assert mocked_send.call_count == 2
+
+            assert original_code in (
+                mocked_send.call_args_list[1].kwargs["body"]
+            )
+
+        # Retry must not create another coupon or subscriber.
+        assert db.session.scalar(
+            select(func.count()).select_from(Coupon)
+        ) == 1
+
+        assert db.session.scalar(
+            select(func.count()).select_from(NewsletterSubscriber)
+        ) == 1

@@ -125,6 +125,22 @@ class NewsletterSubscriber(db.Model):
         nullable=False,
     )
 
+    # Track the welcome coupon email separately
+    # from the newsletter subscription itself.
+    coupon_email_status = db.Column(
+        db.String(20),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+    )
+
+    coupon_email_attempts = db.Column(
+        db.Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
     coupon = db.relationship(
         "Coupon",
         backref="newsletter_subscriber",
@@ -132,9 +148,14 @@ class NewsletterSubscriber(db.Model):
 
     __table_args__ = (
         db.CheckConstraint(
-            "length(trim(email)) > 0",
-            name="ck_newsletter_email_not_blank",
+            "coupon_email_status IN "
+            "('pending', 'smtp_accepted', 'dev_saved', 'failed')",
+            name="ck_newsletter_coupon_email_status",
         ),
+        db.CheckConstraint(
+            "coupon_email_attempts >= 0",
+            name="ck_newsletter_coupon_email_attempts",
+        )
     )
 
 
