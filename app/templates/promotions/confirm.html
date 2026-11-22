@@ -1,0 +1,28 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+<section class="container py-5">
+    <div class="mx-auto" style="max-width: 560px;">
+        <h1>Confirm Your Newsletter Subscription</h1>
+
+        <p>
+            Please confirm that you want to subscribe
+            to the SecureShop newsletter.
+        </p>
+
+        <p>
+            After confirmation, we will email you
+            your personal 10% welcome coupon.
+        </p>
+
+        <form method="POST">
+            {{ form.hidden_tag() }}
+
+            <button type="submit" class="btn btn-primary">
+                Confirm Subscription
+            </button>
+        </form>
+    </div>
+</section>
+{% endblock %}
