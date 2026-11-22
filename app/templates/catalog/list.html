@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Products - SecureShop{% endblock %}
+{% block content %}
+  <section class="page-container">
+    <div class="section-heading">
+      <h2>Products</h2>
+      <p>Browse our catalogue.</p>
+    </div>
+
+    <form method="get" action="{{ url_for('catalog.product_list') }}" class="form-field">
+      <label for="q">Search</label>
+      <input class="form-control" type="search" id="q" name="q" value="{{ q }}" maxlength="100">
+      <label>
+        <input type="checkbox" name="in_stock" value="1" {% if in_stock %}checked{% endif %}>
+        In stock only
+      </label>
+      <button type="submit" class="button">Search</button>
+    </form>
+
+    {% if products %}
+      <div class="feature-grid">
+        {% for product in products %}
+          <article class="feature-card">
+            <h3><a href="{{ url_for('catalog.detail', product_id=product.id) }}">{{ product.name }}</a></h3>
+            <p>{{ "%.2f"|format(product.price) }} EGP</p>
+            {% if product.stock > 0 %}
+              <p class="form-help">In stock</p>
+            {% else %}
+              <p class="form-help">Out of stock</p>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No products found.</p>
+    {% endif %}
+  </section>
+{% endblock %}
