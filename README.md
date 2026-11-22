@@ -25,6 +25,9 @@ flask --app app run --debug
 
 Open http://127.0.0.1:5000
 
+In development, confirmation/reset emails are saved in instance/dev_mail/
+(one .txt file per message). They are never written to the server log.
+
 ## Tests
 
 ```

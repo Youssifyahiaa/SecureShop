@@ -26,7 +26,7 @@ def create_app(test_config=None):
     if not app.config.get("SECRET_KEY"):
         raise RuntimeError("SECRET_KEY is not set. Copy .env.example to .env and set a random value.")
 
-    app.logger.setLevel(logging.INFO)  # so the "[DEV MAIL]" lines reach the server log
+    app.logger.setLevel(logging.INFO)  # so the "[DEV MAIL] saved for ..." lines reach the server log
 
     os.makedirs(app.instance_path, exist_ok=True)
 

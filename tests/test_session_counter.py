@@ -1,5 +1,4 @@
 """Session request window counter (app/auth/session_tracking.py)."""
-import logging
 import re
 from datetime import datetime
 from types import SimpleNamespace
@@ -103,31 +102,31 @@ def test_counter_capped_at_10000(client, clock):
     assert counter(client)["req_count"] == 10000
 
 
-def _reset_password(client, caplog, email="alice@example.com"):
-    caplog.set_level(logging.INFO)
-    caplog.clear()
+def _reset_password(client, email="alice@example.com"):
+    outbox = client.application.extensions.setdefault("dev_outbox", [])
+    outbox.clear()
     client.post("/reset-password", data={"email": email})
-    path = re.search(r"(/reset-password/\S+)", " ".join(caplog.messages)).group(1)
+    path = re.search(r"(/reset-password/\S+)", outbox[-1]["body"]).group(1)
     r = client.post(path, data={"password": NEW, "confirm_password": NEW})
     assert r.status_code == 302
 
 
-def test_keys_gone_after_password_reset_in_same_session(client, clock, caplog):
+def test_keys_gone_after_password_reset_in_same_session(client, clock):
     make_user()
     login(client)
     client.get("/")
     assert set(counter(client)) == set(KEYS)
-    _reset_password(client, caplog)
+    _reset_password(client)
     assert counter(client) == {}
 
 
-def test_keys_gone_from_other_session_after_password_reset(app, clock, caplog):
+def test_keys_gone_from_other_session_after_password_reset(app, clock):
     make_user()
     victim, other = app.test_client(), app.test_client()
     login(victim)
     victim.get("/")
     assert set(counter(victim)) == set(KEYS)
-    _reset_password(other, caplog)
+    _reset_password(other)
     with app.app_context():  # fresh context so the user_loader re-checks session_version
         victim.get("/")
     assert counter(victim) == {}
