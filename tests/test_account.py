@@ -328,3 +328,40 @@ def test_profile_rejects_xss_execution(app, client):
     assert dashboard.status_code == 200
     assert b"&lt;script&gt;alert(1)&lt;/script&gt;" in dashboard.data
     assert b"<script>alert(1)</script>" not in dashboard.data
+
+
+def test_profile_update_requires_csrf(app, client):
+    register_login_route(app)
+
+    customer = create_user(
+        "CSRF Customer",
+        "csrf-profile@test.com"
+    )
+
+    login_as(client, customer)
+
+    # Enable CSRF after the test login.
+    app.config["WTF_CSRF_ENABLED"] = True
+
+    response = client.post(
+        "/account/profile",
+        data={"name": "Attacker Changed Name"}
+    )
+
+    # The request must be rejected.
+    assert response.status_code == 400
+
+    # The profile must remain unchanged.
+    db.session.expire_all()
+
+    unchanged_user = db.session.get(User, customer.id)
+
+    assert unchanged_user.name == "CSRF Customer"
+
+    # No profile-update audit event should be created.
+    audit = AuditLog.query.filter_by(
+        event_type="profile_updated",
+        user_id=customer.id
+    ).first()
+
+    assert audit is None
