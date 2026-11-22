@@ -271,7 +271,8 @@ def test_31_requests_trigger_burst():
         request_timestamps=timestamps
     )
 
-    assert result.score == 25
+    assert result.score == 30
+    assert result.level == "medium"
     assert "request_burst" in result.signals
 
 
@@ -314,7 +315,9 @@ def test_iso_timestamps_are_supported():
         request_timestamps=timestamps
     )
 
-    assert result.score == 25
+    assert result.score == 30
+    assert result.level == "medium"
+    assert "request_burst" in result.signals
 
 
 # -------------------------------------------------

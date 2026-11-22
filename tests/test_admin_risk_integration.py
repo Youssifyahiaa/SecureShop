@@ -210,3 +210,68 @@ def test_critical_risk_logs_out_admin(app, client):
     response = open_admin_dashboard(client)
 
     assert response.status_code == 302
+
+
+# ---------------------------------------------
+# Test 5: Administrator request-burst detection
+# ---------------------------------------------
+
+def test_admin_request_burst_is_detected_by_decorator(app, client):
+
+    login_as_admin(app, client)
+
+    # First 30 requests should be allowed.
+    for _ in range(30):
+        response = open_admin_dashboard(client)
+        assert response.status_code == 200
+
+    # Introduce another risk signal before request 31.
+    with client.session_transaction() as sess:
+        sess["login_role"] = "customer"
+
+    # Request 31 should detect both risk signals.
+    response = open_admin_dashboard(client)
+
+    assert response.status_code == 403
+
+    audit = get_latest_audit()
+
+    assert audit is not None
+    assert audit.event_type == "session_risk_step_up_required"
+
+    details = json.loads(audit.details)
+
+    assert details["score"] == 80
+    assert "request_burst" in details["signals"]
+    assert "role_changed" in details["signals"]
+# ---------------------------------------------
+# Test 6: Request burst alone triggers step-up
+# ---------------------------------------------
+
+def test_admin_request_burst_alone_requires_step_up(app, client):
+
+    login_as_admin(app, client)
+
+    # First 30 requests should be allowed.
+    for _ in range(30):
+        response = open_admin_dashboard(client)
+        assert response.status_code == 200
+
+    # Request 31 should trigger additional verification.
+    response = open_admin_dashboard(client)
+
+    assert response.status_code == 403
+
+    audit = get_latest_audit()
+
+    assert audit is not None
+
+    assert audit.event_type == (
+        "session_risk_step_up_required"
+    )
+
+    details = json.loads(audit.details)
+
+    assert details["score"] == 30
+    assert "request_burst" in details["signals"]
+    assert "role_changed" not in details["signals"]

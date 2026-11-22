@@ -1,6 +1,7 @@
 """Task 4: password reset, session invalidation, role safety, safe redirects, cart on login."""
 import logging
 import re
+from hashlib import sha256
 from datetime import datetime
 
 import pytest
@@ -323,6 +324,38 @@ def limited_app():
         db.session.remove()
         db.drop_all()
 
+def test_login_initializes_security_baseline(client):
+
+    make_user()
+
+    user_agent = "SecureShopTest/1.0"
+
+    response = login(
+        client,
+        headers={"User-Agent": user_agent}
+    )
+
+    assert response.status_code == 302
+
+    with client.session_transaction() as sess:
+
+        expected_hash = sha256(
+            user_agent.encode("utf-8")
+        ).hexdigest()
+
+        assert sess["login_ua_hash"] == expected_hash
+
+        assert sess["login_ip"] is not None
+
+        assert sess["login_role"] == "customer"
+
+        login_time = datetime.fromisoformat(
+            sess["login_at"]
+        )
+
+        assert login_time.tzinfo is not None
+
+        assert sess["admin_request_timestamps"] == []
 
 def test_rate_limit_reset_request_6th_in_hour_429(limited_app):
     c = limited_app.test_client()

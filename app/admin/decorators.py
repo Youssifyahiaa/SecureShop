@@ -1,3 +1,4 @@
+
 """Administrator authorization and session-risk protection."""
 
 from datetime import datetime, timezone
@@ -35,26 +36,43 @@ def admin_required(view):
         if current_user.role != "admin":
             abort(403)
 
-        # 3. Calculate session risk.
+        # 3. Track recent administrator requests.
+        now = datetime.now(timezone.utc)
+
+        request_timestamps = session.get(
+            "admin_request_timestamps",
+            []
+        )
+
+        # Reject unexpected session data.
+        if not isinstance(request_timestamps, list):
+            request_timestamps = []
+
+        # Keep the previous 30 timestamps.
+        request_timestamps = request_timestamps[-30:]
+
+        # Record the current administrator request.
+        request_timestamps.append(now.isoformat())
+
+        session["admin_request_timestamps"] = request_timestamps
+
+        # 4. Calculate session risk.
         risk = assess_session_risk(
             current_user,
             request,
             dict(session),
-            now=datetime.now(timezone.utc),
-
-            # Request-burst tracking will be integrated
-            # after Youssef provides the tracking mechanism.
-            request_timestamps=()
+            now=now,
+            request_timestamps=request_timestamps
         )
 
-        # 4. Decide how to handle the request.
+        # 5. Decide how to handle the request.
         decision = decide_admin_risk(risk)
 
-        # 5. Allow low-risk sessions.
+        # 6. Allow low-risk sessions.
         if decision.action == "allow":
             return view(*args, **kwargs)
 
-        # 6. Audit suspicious decisions.
+        # 7. Audit suspicious decisions.
         try:
             log_event(
                 decision.audit_event,
@@ -70,12 +88,12 @@ def admin_required(view):
                 "Failed to record admin session-risk event"
             )
 
-        # 7. Terminate critical-risk sessions.
+        # 8. Terminate critical-risk sessions.
         if decision.action == "logout":
             logout_user()
             session.clear()
 
-        # 8. Deny access when additional verification is required.
+        # 9. Deny access to risky sessions.
         abort(403)
 
     return wrapped

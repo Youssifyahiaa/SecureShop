@@ -1,3 +1,4 @@
+import hashlib
 import hmac
 import re
 import secrets
@@ -102,30 +103,56 @@ def confirm_email(token):
     return render_template("auth/confirm_result.html", message=message)
 
 
+
 @bp.route("/login", methods=["GET", "POST"])
 @limiter.limit("5 per minute", methods=["POST"])
 def login():
     form = LoginForm()
+
     if form.validate_on_submit():
-        user = db.session.execute(db.select(User).filter_by(email=form.email.data)).scalar_one_or_none()
+        user = db.session.execute(
+            db.select(User).filter_by(email=form.email.data)
+        ).scalar_one_or_none()
+
         if user is None or not user.check_password(form.password.data):
             flash(_BAD_LOGIN)
             return render_template("auth/login.html", form=form)
-        if not user.is_confirmed:  # only reached after the password was correct
+
+        if not user.is_confirmed:
             flash(_UNCONFIRMED)
             return render_template("auth/login.html", form=form)
-        db.session.commit()  # persists a possible password rehash
-        guest_cart = _sanitize_cart(session.get("cart"))  # the only key carried over
-        session.clear()  # prevent session fixation
+
+        db.session.commit()
+
+        guest_cart = _sanitize_cart(session.get("cart"))
+        session.clear()
+
         if guest_cart:
             session["cart"] = guest_cart
+
         login_user(user)
         session.permanent = True
-        return redirect_to_next()
-    if request.method == "POST" and "csrf_token" not in form.errors:
-        flash(_BAD_LOGIN)  # e.g. empty fields: same generic message
-    return render_template("auth/login.html", form=form)
 
+        # Initialize the security baseline for this login.
+        user_agent = request.user_agent.string or ""
+
+        session["login_ua_hash"] = hashlib.sha256(
+            user_agent.encode("utf-8")
+        ).hexdigest()
+
+        session["login_ip"] = request.remote_addr
+        session["login_role"] = user.role
+        session["login_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Initialize administrator request tracking.
+        session["admin_request_timestamps"] = []
+
+        return redirect_to_next()
+
+    if request.method == "POST" and "csrf_token" not in form.errors:
+        flash(_BAD_LOGIN)
+
+    return render_template("auth/login.html", form=form)
 
 @bp.post("/logout")
 @login_required

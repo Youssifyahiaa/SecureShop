@@ -14,7 +14,7 @@ RISK_WEIGHTS = {
     "missing_ip_address": 10,
     "user_agent_changed": 30,
     "ip_address_changed": 15,
-    "request_burst": 25,
+    "request_burst": 30,
     "role_changed": 50,
 }
 
