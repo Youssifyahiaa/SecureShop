@@ -1,13 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Login - SecureShop{% endblock %}
 {% block content %}
-  <h1>Log in</h1>
-  <form method="post" action="{{ url_for('auth.login', next=request.args.get('next')) }}" novalidate>
-    {{ form.csrf_token }}
-    {% for field in [form.email, form.password] %}
-      <p>{{ field.label }}<br>{{ field() }}</p>
-    {% endfor %}
-    <p><button type="submit">Log in</button></p>
-  </form>
-  <p><a href="{{ url_for('auth.reset_request') }}">Forgot password?</a></p>
+<section class="auth-layout">
+  <div class="auth-card">
+    <div class="auth-heading">
+      <h1>Log in</h1>
+    </div>
+    <form method="post" action="{{ url_for('auth.login', next=request.args.get('next')) }}" novalidate>
+      {{ form.csrf_token }}
+      {% for field in [form.email, form.password] %}
+        <div class="form-field">
+          {{ field.label }}
+          {{ field(class_="form-control") }}
+        </div>
+      {% endfor %}
+      <button type="submit" class="button button-full">Log in</button>
+    </form>
+    <div class="auth-footer">
+      <a href="{{ url_for('auth.reset_request') }}">Forgot password?</a>
+    </div>
+  </div>
+</section>
 {% endblock %}

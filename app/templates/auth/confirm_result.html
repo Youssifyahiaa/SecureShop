@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Email confirmation - SecureShop{% endblock %}
 {% block content %}
-  <h1>Email confirmation</h1>
-  <p>{{ message }}</p>
-  <p><a href="{{ url_for('auth.login') }}">Go to login</a></p>
+<section class="auth-layout">
+  <div class="auth-card">
+    <div class="auth-heading">
+      <h1>Email confirmation</h1>
+      <p>{{ message }}</p>
+    </div>
+    <a href="{{ url_for('auth.login') }}" class="button button-full">Go to login</a>
+  </div>
+</section>
 {% endblock %}
