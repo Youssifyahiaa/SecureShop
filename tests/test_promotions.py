@@ -1296,3 +1296,48 @@ def test_concurrent_redemption_global_limit(tmp_path):
 
         assert saved_coupon.used_count == 1
         assert redemption_count == 1
+
+
+def test_newsletter_post_creates_coupon_and_private_email(app, caplog):
+    """Checkpoint the current POST flow before double opt-in replaces it."""
+    app.config.update(WTF_CSRF_ENABLED=False, MAIL_DEV_LOG_ONLY=True)
+    client = app.test_client()
+    response = client.post(
+        "/newsletter/subscribe", data={"email": "  Welcome-Test@Example.com  "}
+    )
+    assert response.status_code == 302
+    with app.app_context():
+        subscriber = db.session.scalar(select(NewsletterSubscriber).where(
+            NewsletterSubscriber.email == "welcome-test@example.com"
+        ))
+        assert subscriber is not None
+        coupon = db.session.get(Coupon, subscriber.coupon_id)
+        assert coupon.assigned_email == "welcome-test@example.com"
+        assert coupon.kind == "percent"
+        assert coupon.amount == Decimal("10.00")
+        assert coupon.max_uses == coupon.per_user_limit == 1
+        expiry = coupon.expires_at.replace(tzinfo=timezone.utc)
+        assert timedelta(days=6, hours=23) < expiry - datetime.now(timezone.utc) <= timedelta(days=7)
+        outbox = app.extensions["dev_outbox"]
+        assert len(outbox) == 1
+        assert outbox[0]["to"] == subscriber.email
+        assert coupon.code in outbox[0]["body"]
+        public = client.get(response.headers["Location"]).get_data(as_text=True)
+        assert coupon.code not in public
+        assert coupon.code not in caplog.text
+        repeated = client.post("/newsletter/subscribe", data={"email": subscriber.email})
+        assert repeated.status_code == 302
+        assert len(outbox) == 1
+        assert db.session.scalar(select(func.count()).select_from(NewsletterSubscriber)) == 1
+        assert db.session.scalar(select(func.count()).select_from(Coupon)) == 1
+
+
+def test_newsletter_post_requires_csrf(app):
+    app.config["WTF_CSRF_ENABLED"] = True
+    response = app.test_client().post(
+        "/newsletter/subscribe", data={"email": "csrf@example.com"}
+    )
+    assert response.status_code == 400
+    with app.app_context():
+        assert db.session.scalar(select(func.count()).select_from(NewsletterSubscriber)) == 0
+        assert not app.extensions.get("dev_outbox")
