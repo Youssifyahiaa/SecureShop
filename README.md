@@ -49,3 +49,21 @@ from app.extensions import db, login_manager, csrf, limiter, migrate
 ```
 
 Work on your own branch (`git checkout -b feature/<name>`) and open a pull request into `main`.
+
+## Security and Database Documentation
+
+### Phase 1 Security Documentation
+- [Security Design Summary](docs/phase1_security_design_summary.md)
+- [Security Requirements](docs/security_requirements.md)
+- [Security Coverage Matrix](docs/security_coverage_matrix.md)
+- [Threat Model](docs/threat_model.md)
+- [Asset Inventory](docs/asset_inventory.md)
+- [Attack Surface Inventory](docs/attack_surface_inventory.md)
+- [Data Flow Diagram](docs/data_flow_diagram.md)
+
+### Database Documentation
+- [Database Entity Relationship Diagram](docs/database_erd.md)
+- [Database Schema](docs/database_schema.md)
+
+### Security Evidence
+- [Security Evidence Directory](docs/evidence/)
