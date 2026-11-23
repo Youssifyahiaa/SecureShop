@@ -8,3 +8,5 @@ You may set url_prefix here if your routes need one.
 from flask import Blueprint
 
 bp = Blueprint("cart", __name__)
+
+from . import routes  # noqa
