@@ -15,6 +15,8 @@
       </a>
       <nav class="main-nav" aria-label="Main navigation">
         <a class="nav-link" href="{{ url_for('main.home') }}">Home</a>
+        <a class="nav-link" href="{{ url_for('catalog.product_list') }}">Products</a>
+        <a class="nav-link" href="{{ url_for('cart.view_cart') }}">Cart</a>
         {% if current_user.is_authenticated %}
           <span class="nav-user">Hello, {{ current_user.name }}</span>
           <form class="nav-logout" method="post" action="{{ url_for('auth.logout') }}">
