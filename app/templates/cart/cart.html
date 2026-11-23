@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Your cart - SecureShop{% endblock %}
+{% block content %}
+  <section class="page-container">
+    <div class="section-heading">
+      <h2>Your cart</h2>
+    </div>
+
+    {% for error in result.errors %}
+      <p class="flash flash-message flash-message--error">{{ error }}</p>
+    {% endfor %}
+
+    {% if result.lines %}
+      <div class="account-table-wrap">
+        <table class="account-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Unit price</th>
+              <th>Quantity</th>
+              <th>Line total</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for line in result.lines %}
+              <tr>
+                <td><a href="{{ url_for('catalog.detail', product_id=line.product_id) }}">{{ line.name }}</a></td>
+                <td>{{ line.unit_price|money }} EGP</td>
+                <td>
+                  <form method="post" action="{{ url_for('cart.update', product_id=line.product_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input class="form-control" type="number" name="quantity" value="{{ line.quantity }}" min="1" max="99" required>
+                    <button type="submit" class="button button-secondary">Update</button>
+                  </form>
+                </td>
+                <td>{{ line.line_total|money }} EGP</td>
+                <td>
+                  <form method="post" action="{{ url_for('cart.remove', product_id=line.product_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="button button-ghost">Remove</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Subtotal: {{ result.subtotal|money }} EGP</strong></p>
+    {% else %}
+      <p>Your cart is empty.</p>
+      <p><a class="button" href="{{ url_for('catalog.product_list') }}">Browse products</a></p>
+    {% endif %}
+  </section>
+{% endblock %}
